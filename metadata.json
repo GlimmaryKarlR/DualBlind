@@ -1,0 +1,6 @@
+{
+  "name": "DualBlind AI Benchmark",
+  "description": "Multi-agent collaborative benchmark measuring inference-time compute efficiency, tokens vs latency, and accuracy across logic, strategy, and abstract reasoning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
