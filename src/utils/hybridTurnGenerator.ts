@@ -16,19 +16,24 @@ export async function generateBenchmarkTurnHybrid(options: {
     options;
 
   const provider = (agent.provider || 'google').toLowerCase();
+  
+  // Check for direct provider key, universal OpenRouter key, or Google fallback key
   const hasDirectKey = hasConfiguredKeyForProvider(provider, apiKeys);
+  const hasOpenRouterKey = Boolean(apiKeys.openrouter && apiKeys.openrouter.trim().length > 0);
   const hasGoogleKey = Boolean(apiKeys.google && apiKeys.google.trim().length > 0);
-  const hasUsableKey = hasDirectKey || hasGoogleKey;
+
+  // OpenRouter acts as a universal hub for DeepSeek, Qwen, Llama, etc.
+  const hasUsableKey = hasDirectKey || hasOpenRouterKey || hasGoogleKey;
 
   let directAttemptError: Error | null = null;
 
-  // Strategy 1: Direct Client Inference (if API key is present)
+  // Strategy 1: Direct Client Inference via Browser
   if (hasUsableKey) {
     try {
       return await generateTurnDirectClient(options);
     } catch (clientErr: any) {
       directAttemptError = clientErr;
-      console.warn('Direct client inference failed; trying server endpoint:', clientErr);
+      console.warn('Direct client inference failed; trying server API route:', clientErr);
     }
   }
 
@@ -64,20 +69,19 @@ export async function generateBenchmarkTurnHybrid(options: {
       };
     }
 
-    // Detect static host or missing backend (404 Not Found, 405 Method Not Allowed, 501 Not Implemented)
     const isMissingBackend = [404, 405, 501].includes(response.status);
 
-    // Strategy 3: Graceful Fallback for Static Host
+    // Strategy 3: Server returned static host error (404/405)
     if (isMissingBackend) {
       if (hasUsableKey) {
         if (!directAttemptError) {
-          console.info(`Server returned ${response.status} (static host). Executing direct client inference.`);
+          console.info(`Server returned HTTP ${response.status} (static host). Executing direct client inference.`);
           return await generateTurnDirectClient(options);
         }
         throw directAttemptError;
       }
       throw new Error(
-        `Static deployment detected (HTTP ${response.status}). Please enter your API key in the UI settings to run benchmarks directly in the browser.`
+        `Static deployment detected (HTTP ${response.status}). Please enter your API key in the settings to run benchmarks directly in the browser.`
       );
     }
 
