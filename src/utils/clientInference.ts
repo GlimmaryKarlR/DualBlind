@@ -48,13 +48,14 @@ export function extractFinalAnswer(text: string): string | null {
  */
 function resolveGoogleModel(modelName: string): string {
   const m = (modelName || '').toLowerCase().trim();
-  if (m.includes('2.5-flash') || m.includes('2-5-flash')) return 'gemini-2.5-flash';
-  if (m.includes('2.5-pro') || m.includes('2-5-pro')) return 'gemini-2.5-pro';
-  if (m.includes('3.7-flash') || m.includes('3-7-flash')) return 'gemini-2.5-flash'; // Fallback mapping for stable v1beta
-  if (m.includes('2.0-flash') || m.includes('2-0-flash')) return 'gemini-2.0-flash';
-  if (m.includes('1.5-pro')) return 'gemini-1.5-pro';
-  if (m.includes('1.5-flash')) return 'gemini-1.5-flash';
-  return 'gemini-2.5-flash';
+  if (m.includes('3.7-flash') || m.includes('3-7-flash')) return 'gemini-3.7-flash';
+  if (m.includes('3.1-pro') || m.includes('3-1-pro') || m.includes('pro')) return 'gemini-3.1-pro-preview';
+  if (m.includes('3.1-flash-lite') || m.includes('flash-lite') || m.includes('lite')) return 'gemini-3.1-flash-lite';
+  if (m.includes('flash-latest') || m.includes('latest')) return 'gemini-flash-latest';
+  if (m.startsWith('gemini-') || m.startsWith('models/gemini-')) {
+    return m.replace(/^models\//, '');
+  }
+  return 'gemini-3.7-flash';
 }
 
 /**
@@ -292,7 +293,7 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
   let textResult = '';
   let inputTokens = 0;
   let outputTokens = 0;
-  let modelUsed = agent.model || 'gemini-2.5-flash';
+  let modelUsed = agent.model || 'gemini-3.7-flash';
 
   // 1. Check Google Gemini Direct execution
   if (provider === 'google' || (!provider && apiKeys.google)) {
@@ -333,7 +334,7 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
 
     const googleRes = await callGoogleDirect(
       googleKey,
-      agent.model || 'gemini-2.5-flash',
+      agent.model || 'gemini-3.7-flash',
       systemInstruction,
       contents,
       agent.temperature ?? 0.4
@@ -462,7 +463,7 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
     if (apiKeys.google) {
       const googleRes = await callGoogleDirect(
         apiKeys.google,
-        'gemini-2.5-flash',
+        agent.model || 'gemini-3.7-flash',
         systemInstruction,
         [
           {

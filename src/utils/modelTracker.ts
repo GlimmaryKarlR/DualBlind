@@ -48,21 +48,11 @@ export const MODEL_PRESETS: ModelPreset[] = [
     outputPricePerMillion: 0.60,
   },
   {
-    id: 'gemini-2.5-flash',
+    id: 'gemini-3.1-pro-preview',
     provider: 'google',
     brand: 'Google',
-    name: 'Gemini 2.5 Flash',
-    modelCode: 'gemini-2.5-flash',
-    isExternal: false,
-    inputPricePerMillion: 0.15,
-    outputPricePerMillion: 0.60,
-  },
-  {
-    id: 'gemini-2.5-pro',
-    provider: 'google',
-    brand: 'Google',
-    name: 'Gemini 2.5 Pro',
-    modelCode: 'gemini-2.5-pro',
+    name: 'Gemini 3.1 Pro (Reasoning)',
+    modelCode: 'gemini-3.1-pro-preview',
     isExternal: false,
     inputPricePerMillion: 1.25,
     outputPricePerMillion: 5.00,
@@ -76,6 +66,16 @@ export const MODEL_PRESETS: ModelPreset[] = [
     isExternal: false,
     inputPricePerMillion: 0.075,
     outputPricePerMillion: 0.30,
+  },
+  {
+    id: 'gemini-flash-latest',
+    provider: 'google',
+    brand: 'Google',
+    name: 'Gemini Flash Latest',
+    modelCode: 'gemini-flash-latest',
+    isExternal: false,
+    inputPricePerMillion: 0.15,
+    outputPricePerMillion: 0.60,
   },
 
   // xAI (External Copy & Paste / Grok)
@@ -526,24 +526,24 @@ export function parseModelBrandInfo(
     displayName = customModel || 'DeepSeek R1';
     inputPrice = 0.55;
     outputPrice = 2.19;
-  } else if (model.includes('gemini-2.5-pro')) {
+  } else if (model.includes('gemini-3.1-pro') || model.includes('3.1-pro') || (model.includes('gemini') && model.includes('pro'))) {
     brand = 'Google';
     brandColor = 'purple';
-    displayName = 'Gemini 2.5 Pro';
+    displayName = 'Gemini 3.1 Pro';
     inputPrice = 1.25;
     outputPrice = 5.00;
-  } else if (model.includes('gemini-2.5-flash')) {
-    brand = 'Google';
-    brandColor = 'blue';
-    displayName = 'Gemini 2.5 Flash';
-    inputPrice = 0.15;
-    outputPrice = 0.60;
-  } else if (model.includes('gemini-3.1-flash-lite')) {
+  } else if (model.includes('gemini-3.1-flash-lite') || model.includes('flash-lite')) {
     brand = 'Google';
     brandColor = 'cyan';
     displayName = 'Gemini 3.1 Flash Lite';
     inputPrice = 0.075;
     outputPrice = 0.30;
+  } else if (model.includes('gemini-3.7-flash') || model.includes('3.7-flash') || model.includes('gemini-flash-latest') || model.includes('gemini')) {
+    brand = 'Google';
+    brandColor = 'indigo';
+    displayName = model.includes('flash-latest') ? 'Gemini Flash Latest' : 'Gemini 3.7 Flash';
+    inputPrice = 0.15;
+    outputPrice = 0.60;
   } else if (model.includes('custom') || isManualExternal) {
     brand = customBrand || 'External';
     brandColor = 'purple';

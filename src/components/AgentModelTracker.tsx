@@ -198,9 +198,9 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
             >
               <optgroup label="Google (Automated API)">
                 <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash</option>
-                <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash</option>
-                <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro</option>
+                <option value="gemini-3.1-pro-preview">Google • Gemini 3.1 Pro (Reasoning)</option>
                 <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
+                <option value="gemini-flash-latest">Google • Gemini Flash Latest</option>
               </optgroup>
               <optgroup label="Microsoft (External / Copilot / Azure)">
                 <option value="phi-4">Microsoft • Phi-4 (14B)</option>
@@ -322,9 +322,9 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
             >
               <optgroup label="Google (Automated API)">
                 <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash</option>
-                <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash</option>
-                <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro</option>
+                <option value="gemini-3.1-pro-preview">Google • Gemini 3.1 Pro (Reasoning)</option>
                 <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
+                <option value="gemini-flash-latest">Google • Gemini Flash Latest</option>
               </optgroup>
               <optgroup label="Microsoft (External / Copilot / Azure)">
                 <option value="phi-4">Microsoft • Phi-4 (14B)</option>
