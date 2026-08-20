@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { ChatTurn, AgentConfig, ConsensusStatus } from '../types/benchmark';
 import { Clock, Cpu, CheckCircle2, MessageSquare, AlertCircle, Sparkles } from 'lucide-react';
 import { formatTime } from '../utils/formatters';
+import { parseModelBrandInfo } from '../utils/modelTracker';
 
 interface ChatTranscriptProps {
   turns: ChatTurn[];
@@ -114,7 +115,7 @@ export const ChatTranscript: React.FC<ChatTranscriptProps> = ({
               <div className={`flex flex-col max-w-[85%] ${isAgentA ? 'items-start' : 'items-end'}`}>
                 {/* Agent Header & Telemetry */}
                 <div
-                  className={`flex items-center gap-2 mb-1 px-1 text-[10px] ${
+                  className={`flex flex-wrap items-center gap-1.5 mb-1 px-1 text-[10px] ${
                     isAgentA ? 'flex-row' : 'flex-row-reverse'
                   }`}
                 >
@@ -127,6 +128,12 @@ export const ChatTranscript: React.FC<ChatTranscriptProps> = ({
                   >
                     {isAgentA ? `AGENT 01 (${turn.agentName})` : `AGENT 02 (${turn.agentName})`}
                   </span>
+
+                  {turn.modelUsed && (
+                    <span className="rounded bg-slate-200/70 px-1 py-0.2 text-[9px] font-mono text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      {parseModelBrandInfo(isAgentA ? agentA.model : agentB.model, turn.modelUsed).displayName}
+                    </span>
+                  )}
 
                   <span className="text-slate-300 dark:text-slate-600">•</span>
 

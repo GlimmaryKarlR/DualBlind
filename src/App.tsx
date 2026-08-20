@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { AlertCircle, RefreshCw, X } from 'lucide-react';
 import {
   BenchmarkProblem,
   TopicCategory,
@@ -13,6 +14,7 @@ import {
 import { BENCHMARK_PROBLEMS } from './data/benchmarkProblems';
 import { Navbar } from './components/Navbar';
 import { ArenaHeader } from './components/ArenaHeader';
+import { AgentModelTracker } from './components/AgentModelTracker';
 import { ProblemCard } from './components/ProblemCard';
 import { ChatTranscript } from './components/ChatTranscript';
 import { TelemetryPanel } from './components/TelemetryPanel';
@@ -93,6 +95,7 @@ export default function App() {
   // History & Storage
   const [runsHistory, setRunsHistory] = useState<BenchmarkRunRecord[]>([]);
   const [isRunSaved, setIsRunSaved] = useState<boolean>(false);
+  const [turnError, setTurnError] = useState<string | null>(null);
 
   // Modals
   const [isResultModalOpen, setIsResultModalOpen] = useState<boolean>(false);
@@ -122,6 +125,7 @@ export default function App() {
     setIsRunning(false);
     setIsPaused(false);
     setActiveAgentTurn(null);
+    setTurnError(null);
     setTurns([]);
     setConsensusStatus('idle');
     setFinalAgreedAnswer(null);
@@ -205,6 +209,7 @@ export default function App() {
       const agentTurnCount = Math.floor(currentTurnList.length / 2) + 1;
 
       try {
+        setTurnError(null);
         const response = await fetch('/api/benchmark/generate-turn', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -220,7 +225,8 @@ export default function App() {
         });
 
         if (!response.ok) {
-          throw new Error(`Server returned HTTP ${response.status}`);
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `Server returned HTTP ${response.status}`);
         }
 
         const data = await response.json();
@@ -247,6 +253,7 @@ export default function App() {
           costUsd,
           tokensPerSec,
           isConsensusClaim: !!data.extractedFinalAnswer,
+          modelUsed: data.modelUsed,
         };
 
         const updatedTurns = [...currentTurnList, newTurn];
@@ -348,6 +355,7 @@ export default function App() {
         };
       } catch (err: any) {
         console.error('Turn generation failed:', err);
+        setTurnError(err?.message || 'Failed to generate agent response');
         setActiveAgentTurn(null);
         setIsRunning(false);
         throw err;
@@ -636,6 +644,54 @@ export default function App() {
               onAbortInfiniteBurn={handleFlagLoopAndAbort}
               turnCount={turns.length}
               maxTurns={maxTurns}
+            />
+
+            {/* Error Notification / Recovery Banner */}
+            {turnError && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/40 text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between gap-4 shadow-sm animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white">
+                    <AlertCircle className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 dark:text-white">
+                      Transient API Interruption Handled
+                    </p>
+                    <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
+                      {turnError} — You can retry this turn or step forward.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setTurnError(null);
+                      handleStepTurn();
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-1.5 font-bold text-white hover:bg-rose-500 cursor-pointer shadow-xs transition-colors"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span>Retry Turn</span>
+                  </button>
+                  <button
+                    onClick={() => setTurnError(null)}
+                    className="rounded-xl p-1.5 text-slate-400 hover:bg-rose-100 hover:text-slate-700 dark:hover:bg-rose-900/50 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Live Model & Brand Telemetry Tracker */}
+            <AgentModelTracker
+              agentA={agentA}
+              agentB={agentB}
+              lastTurnAgentA={turns.slice().reverse().find((t) => t.agentId === 'agent_a') || null}
+              lastTurnAgentB={turns.slice().reverse().find((t) => t.agentId === 'agent_b') || null}
+              onOpenConfig={() => setIsConfigModalOpen(true)}
+              isRunning={isRunning}
             />
 
             {/* Split Screen: Problem + Chat on Left (60%), Live Telemetry on Right (40%) */}
