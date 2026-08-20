@@ -59,6 +59,25 @@ function resolveGoogleModel(modelName: string): string {
 }
 
 /**
+ * Maps short model keys to OpenRouter identifier slugs
+ */
+function resolveOpenRouterModel(modelName: string): string {
+  const m = (modelName || '').trim();
+  if (!m) return 'google/gemini-2.5-flash';
+  if (m.includes('/')) return m; // Already a full slug like deepseek/deepseek-r1
+
+  const lower = m.toLowerCase();
+  if (lower.includes('deepseek-r1') || lower === 'r1') return 'deepseek/deepseek-r1';
+  if (lower.includes('deepseek-v3') || lower === 'deepseek-chat') return 'deepseek/deepseek-chat';
+  if (lower.includes('llama-3.3') || lower.includes('llama-3-3')) return 'meta-llama/llama-3.3-70b-instruct';
+  if (lower.includes('qwen-2.5-72b') || lower.includes('qwen-72b')) return 'qwen/qwen-2.5-72b-instruct';
+  if (lower.includes('claude-3.7-sonnet') || lower.includes('claude-3-7')) return 'anthropic/claude-3.7-sonnet';
+  if (lower.includes('gpt-4o')) return 'openai/gpt-4o';
+  
+  return m;
+}
+
+/**
  * Directly calls Google Gemini REST API from the browser
  */
 async function callGoogleDirect(
@@ -151,7 +170,22 @@ async function callOpenAICompatibleDirect(
 
   const data = await response.json();
   const choice = data.choices?.[0];
-  const text = choice?.message?.content || choice?.text || '';
+  const message = choice?.message;
+
+  // Extract regular content or fallback to reasoning output (DeepSeek-R1, Novita, etc.)
+  let text = message?.content || choice?.text || '';
+
+  if (!text.trim() && message) {
+    const reasoning = message.reasoning || message.reasoning_content;
+    if (reasoning) {
+      text = `<think>\n${reasoning}\n</think>`;
+    }
+  }
+
+  if (!text.trim()) {
+    throw new Error(`Model ${modelName} returned an empty response body.`);
+  }
+
   const usage = data.usage || {};
   const inputTokens = usage.prompt_tokens || Math.max(20, Math.round(text.length * 0.4));
   const outputTokens = usage.completion_tokens || Math.max(10, Math.round(text.length * 0.3));
@@ -295,8 +329,8 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
   let outputTokens = 0;
   let modelUsed = agent.model || 'gemini-3.7-flash';
 
-  // 1. Check Google Gemini Direct execution
-  if (provider === 'google' || (!provider && apiKeys.google)) {
+  // Execution routing
+  if (provider === 'google' && apiKeys.google) {
     const googleKey = apiKeys.google || ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || '';
     if (!googleKey) {
       throw new Error(
@@ -433,7 +467,8 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
     outputTokens = res.outputTokens;
     modelUsed = res.modelUsed;
   } else if (apiKeys.openrouter) {
-    const targetModel = agent.model || 'google/gemini-2.5-flash';
+    // OpenRouter fallback for all providers
+    const targetModel = resolveOpenRouterModel(agent.model);
     const res = await callOpenAICompatibleDirect(
       'https://openrouter.ai/api/v1/chat/completions',
       apiKeys.openrouter,
@@ -458,34 +493,32 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
     inputTokens = res.inputTokens;
     outputTokens = res.outputTokens;
     modelUsed = res.modelUsed;
+  } else if (apiKeys.google) {
+    // Secondary fallback to Google Gemini if present
+    const googleRes = await callGoogleDirect(
+      apiKeys.google,
+      agent.model || 'gemini-3.7-flash',
+      systemInstruction,
+      [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Problem: ${problem.question}\nDiscuss with ${partnerName} and conclude with ${problem.expectedFormat}`,
+            },
+          ],
+        },
+      ],
+      agent.temperature ?? 0.4
+    );
+    textResult = googleRes.text;
+    inputTokens = googleRes.inputTokens;
+    outputTokens = googleRes.outputTokens;
+    modelUsed = googleRes.modelUsed;
   } else {
-    // If user has a Google key saved, use Google Gemini as default execution
-    if (apiKeys.google) {
-      const googleRes = await callGoogleDirect(
-        apiKeys.google,
-        agent.model || 'gemini-3.7-flash',
-        systemInstruction,
-        [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `Problem: ${problem.question}\nDiscuss with ${partnerName} and conclude with ${problem.expectedFormat}`,
-              },
-            ],
-          },
-        ],
-        agent.temperature ?? 0.4
-      );
-      textResult = googleRes.text;
-      inputTokens = googleRes.inputTokens;
-      outputTokens = googleRes.outputTokens;
-      modelUsed = googleRes.modelUsed;
-    } else {
-      throw new Error(
-        `No API key configured for provider "${provider}". Please open the "APIs & Tokens" locker in the navigation bar to enter your API key.`
-      );
-    }
+    throw new Error(
+      `No API key configured for provider "${provider}". Please open the "APIs & Tokens" locker in the navigation bar to enter your API key.`
+    );
   }
 
   const latencyMs = Math.max(120, Date.now() - startTime);
