@@ -22,13 +22,13 @@ export async function generateBenchmarkTurnHybrid(options: {
 
   let directAttemptError: Error | null = null;
 
-  // Strategy 1: Direct Client Inference (if an explicit API key is provided)
+  // Strategy 1: Direct Client Inference (if API key is present)
   if (hasUsableKey) {
     try {
       return await generateTurnDirectClient(options);
     } catch (clientErr: any) {
       directAttemptError = clientErr;
-      console.warn('Direct client inference failed; falling back to server API endpoint:', clientErr);
+      console.warn('Direct client inference failed; trying server endpoint:', clientErr);
     }
   }
 
@@ -64,23 +64,23 @@ export async function generateBenchmarkTurnHybrid(options: {
       };
     }
 
-    const is404 = response.status === 404;
+    // Detect static host or missing backend (404 Not Found, 405 Method Not Allowed, 501 Not Implemented)
+    const isMissingBackend = [404, 405, 501].includes(response.status);
 
-    // Strategy 3: Server returned error or static host (404)
-    if (is404) {
+    // Strategy 3: Graceful Fallback for Static Host
+    if (isMissingBackend) {
       if (hasUsableKey) {
         if (!directAttemptError) {
-          console.info('Server route unavailable (HTTP 404). Executing direct client inference.');
+          console.info(`Server returned ${response.status} (static host). Executing direct client inference.`);
           return await generateTurnDirectClient(options);
         }
         throw directAttemptError;
       }
       throw new Error(
-        'Static deployment detected (/api returned 404). Please provide a valid API key in the settings to execute benchmarks directly in the browser.'
+        `Static deployment detected (HTTP ${response.status}). Please enter your API key in the UI settings to run benchmarks directly in the browser.`
       );
     }
 
-    // Extract structured error message if available
     let serverMessage = '';
     try {
       const errJson = await response.json();
@@ -93,13 +93,10 @@ export async function generateBenchmarkTurnHybrid(options: {
       `Server returned HTTP ${response.status}: ${serverMessage.substring(0, 150) || response.statusText}`
     );
   } catch (netErr: any) {
-    // Strategy 4: Fall back to direct client on backend network failure (only if client hasn't already failed)
     if (hasUsableKey && !directAttemptError) {
       console.info('Backend unreachable, falling back to direct client execution.');
       return await generateTurnDirectClient(options);
     }
-    
-    // Re-throw original direct error if available, otherwise network error
     throw directAttemptError || netErr;
   }
 }
