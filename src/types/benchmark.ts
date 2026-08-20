@@ -40,6 +40,10 @@ export interface AgentConfig {
   name: string;
   brand?: string;
   model: string;
+  provider?: 'google' | 'anthropic' | 'openai' | 'deepseek' | 'moonshot' | 'qwen' | 'mistral' | 'meta' | 'xai' | 'cohere' | 'custom';
+  isManualExternal?: boolean;
+  customBrand?: string;
+  customModel?: string;
   temperature: number;
   thinkingLevel?: 'HIGH' | 'LOW' | 'MINIMAL';
   systemPromptModifier?: string;
@@ -63,6 +67,7 @@ export interface ChatTurn {
   tokensPerSec: number;
   isConsensusClaim: boolean;
   modelUsed?: string;
+  isManualEntry?: boolean;
   thoughtProcess?: string;
 }
 
