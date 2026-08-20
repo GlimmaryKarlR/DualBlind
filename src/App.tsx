@@ -13,6 +13,9 @@ import {
   ProviderApiKeys,
 } from './types/benchmark';
 import { getStoredApiKeys, countConfiguredKeys } from './utils/tokenStorage';
+import { getStoredRuns, saveRunToStorage } from './utils/runStorage';
+import { generateBenchmarkTurnHybrid } from './utils/hybridTurnGenerator';
+import { computeVerificationClient } from './utils/verification';
 import { BENCHMARK_PROBLEMS } from './data/benchmarkProblems';
 import { Navbar } from './components/Navbar';
 import { ArenaHeader } from './components/ArenaHeader';
@@ -104,7 +107,7 @@ export default function App() {
   });
 
   // History & Storage
-  const [runsHistory, setRunsHistory] = useState<BenchmarkRunRecord[]>([]);
+  const [runsHistory, setRunsHistory] = useState<BenchmarkRunRecord[]>(() => getStoredRuns());
   const [isRunSaved, setIsRunSaved] = useState<boolean>(false);
   const [turnError, setTurnError] = useState<string | null>(null);
 
@@ -135,16 +138,28 @@ export default function App() {
   const metricsRef = useRef(metrics);
   metricsRef.current = metrics;
 
-  // Load Leaderboard Runs from API
+  // Load Leaderboard Runs from API (with seamless local storage fallback)
   useEffect(() => {
     fetch('/api/leaderboard/runs')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
       .then((data) => {
-        if (Array.isArray(data)) {
-          setRunsHistory(data);
+        if (Array.isArray(data) && data.length > 0) {
+          setRunsHistory((prev) => {
+            const map = new Map<string, BenchmarkRunRecord>();
+            data.forEach((item) => map.set(item.id, item));
+            prev.forEach((item) => {
+              if (!map.has(item.id)) map.set(item.id, item);
+            });
+            return Array.from(map.values());
+          });
         }
       })
-      .catch((err) => console.log('Notice: in-memory run store initialized', err));
+      .catch(() => {
+        // Safe fallback on static deployments
+      });
   }, []);
 
   // Reset Arena State
@@ -268,10 +283,34 @@ export default function App() {
       setWaitingForManualProxy(null);
 
       try {
-        const verifyRes = await fetch('/api/benchmark/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        let verifyData: any = null;
+        try {
+          const verifyRes = await fetch('/api/benchmark/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              problem: currentProblem,
+              finalAnswerA: finalAnswer || finalTurns[finalTurns.length - 1]?.extractedFinalAnswer,
+              finalAnswerB: finalAnswer,
+              totalTokens: finalMetrics.totalTokens,
+              totalWallClockMs: finalMetrics.totalWallClockMs,
+              totalCostUsd: finalMetrics.totalCostUsd,
+              consensusReached: abortedAsNonFunctional ? false : consensusReached,
+              isUncapped,
+              abortedAsNonFunctional,
+              turnsCount: finalTurns.length,
+            }),
+          });
+          if (verifyRes.ok) {
+            verifyData = await verifyRes.json();
+          }
+        } catch {
+          // Server offline or returned 404
+        }
+
+        // If server verification was unavailable or returned non-JSON / 404, compute on client
+        if (!verifyData || verifyData.efficiencyIndex === undefined) {
+          verifyData = computeVerificationClient({
             problem: currentProblem,
             finalAnswerA: finalAnswer || finalTurns[finalTurns.length - 1]?.extractedFinalAnswer,
             finalAnswerB: finalAnswer,
@@ -281,10 +320,9 @@ export default function App() {
             consensusReached: abortedAsNonFunctional ? false : consensusReached,
             isUncapped,
             abortedAsNonFunctional,
-          }),
-        });
-
-        const verifyData = await verifyRes.json();
+            turnsCount: finalTurns.length,
+          });
+        }
 
         const completedMetrics: BenchmarkMetrics = {
           ...finalMetrics,
@@ -293,7 +331,13 @@ export default function App() {
           isCorrect: verifyData.isCorrect || false,
           consensusReached: abortedAsNonFunctional ? false : consensusReached,
           consensusTurn: consensusReached ? finalTurns.length : null,
-          teamFunctionality: verifyData.teamFunctionality || (abortedAsNonFunctional ? 'non_functional_loop' : 'divergent_gridlock'),
+          teamFunctionality:
+            verifyData.teamVerdict ||
+            (abortedAsNonFunctional
+              ? 'non_functional_infinite_burn'
+              : consensusReached
+              ? 'optimal'
+              : 'deliberating'),
           isUncapped,
         };
 
@@ -304,6 +348,7 @@ export default function App() {
           canonicalAnswer: verifyData.canonicalAnswer || currentProblem.canonicalAnswer,
           explanation: verifyData.explanation || currentProblem.explanation,
           verificationNotes: verifyData.verificationNotes || '',
+          teamVerdict: verifyData.teamVerdict,
         };
 
         setMetrics(completedMetrics);
@@ -370,33 +415,23 @@ export default function App() {
 
       try {
         setTurnError(null);
-        const response = await fetch('/api/benchmark/generate-turn', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            problem: currentProblem,
-            agent: currentAgent,
-            partnerName: partnerAgent.name,
-            history,
-            currentTurn: currentTurnList.length,
-            maxTurnsPerAgent: isUncapped ? 999 : Math.floor(maxTurns / 2),
-            isUncapped,
-            apiKeys,
-          }),
+        const data = await generateBenchmarkTurnHybrid({
+          problem: currentProblem,
+          agent: currentAgent,
+          partnerName: partnerAgent.name,
+          history,
+          currentTurn: currentTurnList.length,
+          maxTurnsPerAgent: isUncapped ? 999 : Math.floor(maxTurns / 2),
+          isUncapped,
+          apiKeys,
         });
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Server returned HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
         const latencyMs = data.latencyMs || 1000;
         const totalTokens = data.totalTokens || 120;
         const inputTokens = data.inputTokens || 80;
         const outputTokens = data.outputTokens || 40;
         const costUsd = data.costUsd !== undefined ? data.costUsd : calculateTokenCost(inputTokens, outputTokens, currentAgent.model);
-        const tokensPerSec = latencyMs > 0 ? Math.round((outputTokens / (latencyMs / 1000)) * 10) / 10 : 30;
+        const tokensPerSec = data.tokensPerSec || (latencyMs > 0 ? Math.round((outputTokens / (latencyMs / 1000)) * 10) / 10 : 30);
 
         const newTurn: ChatTurn = {
           id: `turn-${turnNumber}-${Date.now()}`,
@@ -635,32 +670,28 @@ export default function App() {
         isCurrentAgent: t.agentId === currentAgent.id,
       }));
 
-      const response = await fetch('/api/benchmark/generate-turn', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          problem: currentProblem,
-          agent: { ...currentAgent, model: 'gemini-3.7-flash', isManualExternal: false },
-          partnerName: partnerAgent.name,
-          history,
-          currentTurn: turns.length,
-          maxTurnsPerAgent: isUncapped ? 999 : Math.floor(maxTurns / 2),
-          isUncapped,
-        }),
+      const data = await generateBenchmarkTurnHybrid({
+        problem: currentProblem,
+        agent: { ...currentAgent, model: currentAgent.model || 'gemini-2.5-flash', isManualExternal: false },
+        partnerName: partnerAgent.name,
+        history,
+        currentTurn: turns.length,
+        maxTurnsPerAgent: isUncapped ? 999 : Math.floor(maxTurns / 2),
+        isUncapped,
+        apiKeys,
       });
 
-      const data = await response.json();
       const latencyMs = data.latencyMs || 1000;
       const totalTokens = data.totalTokens || 120;
       const inputTokens = data.inputTokens || 80;
       const outputTokens = data.outputTokens || 40;
-      const costUsd = data.costUsd !== undefined ? data.costUsd : calculateTokenCost(inputTokens, outputTokens);
+      const costUsd = data.costUsd !== undefined ? data.costUsd : calculateTokenCost(inputTokens, outputTokens, currentAgent.model);
 
       await handleManualTurnSubmit(data.content, latencyMs, inputTokens, outputTokens, costUsd);
     } catch (e) {
       console.error('Manual fallback execution failed:', e);
     }
-  }, [turns, agentA, agentB, currentProblem, isUncapped, maxTurns, handleManualTurnSubmit]);
+  }, [turns, agentA, agentB, currentProblem, isUncapped, maxTurns, apiKeys, handleManualTurnSubmit]);
 
   // Manual Flag / Abort for Infinite Token Burn Loop
   const handleFlagLoopAndAbort = useCallback(async () => {
@@ -810,6 +841,12 @@ export default function App() {
     };
 
     try {
+      // Always save locally first so user never loses their data on static/Vercel hosts
+      const updated = saveRunToStorage(record);
+      setRunsHistory(updated);
+      setIsRunSaved(true);
+
+      // Attempt server sync if backend is active
       const res = await fetch('/api/leaderboard/save-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -817,16 +854,14 @@ export default function App() {
       });
 
       if (res.ok) {
-        setIsRunSaved(true);
         const updatedList = await fetch('/api/leaderboard/runs').then((r) => r.json());
-        if (Array.isArray(updatedList)) {
+        if (Array.isArray(updatedList) && updatedList.length > 0) {
           setRunsHistory(updatedList);
         }
       }
     } catch (e) {
-      console.error('Failed saving benchmark run:', e);
+      console.warn('Backend leaderboard sync skipped, saved to browser storage:', e);
       setIsRunSaved(true);
-      setRunsHistory((prev) => [record, ...prev]);
     }
   };
 
@@ -904,15 +939,21 @@ export default function App() {
                   </div>
                   <div>
                     <p className="font-bold text-slate-900 dark:text-white">
-                      Transient API Interruption Handled
+                      Inference Service Notice
                     </p>
-                    <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
-                      {turnError} — You can retry this turn or step forward.
+                    <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5 max-w-2xl">
+                      {turnError}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleOpenTokens}
+                    className="flex items-center gap-1.5 rounded-xl bg-amber-600 px-3 py-1.5 font-bold text-white hover:bg-amber-500 cursor-pointer shadow-xs transition-colors"
+                  >
+                    <span>APIs & Tokens</span>
+                  </button>
                   <button
                     onClick={() => {
                       setTurnError(null);
