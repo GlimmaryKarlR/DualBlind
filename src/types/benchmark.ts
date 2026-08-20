@@ -53,6 +53,7 @@ export interface AgentConfig {
     | 'microsoft'
     | 'amazon'
     | 'cohere'
+    | 'openrouter'
     | 'custom';
   isManualExternal?: boolean;
   customBrand?: string;
