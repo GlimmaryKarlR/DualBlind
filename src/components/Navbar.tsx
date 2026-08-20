@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, Trophy, Layers, BookOpen, Shuffle, Sparkles, Activity } from 'lucide-react';
+import { Bot, Trophy, Layers, BookOpen, Shuffle, Sparkles, Activity, Key } from 'lucide-react';
 import { TopicCategory } from '../types/benchmark';
 
 interface NavbarProps {
@@ -7,6 +7,8 @@ interface NavbarProps {
   onSelectTab: (tab: 'arena' | 'leaderboard' | 'problems' | 'methodology') => void;
   onRandomChallenge: (topic?: TopicCategory) => void;
   isRunning: boolean;
+  onOpenTokens?: () => void;
+  configuredKeysCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -14,6 +16,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   onRandomChallenge,
   isRunning,
+  onOpenTokens,
+  configuredKeysCount = 0,
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
@@ -93,8 +97,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </nav>
 
-        {/* Live Status & Quick Action Button */}
+        {/* Live Status & Quick Action Buttons */}
         <div className="flex items-center gap-2.5">
+          {/* APIs and Tokens Button */}
+          {onOpenTokens && (
+            <button
+              id="nav-tokens-btn"
+              onClick={onOpenTokens}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                configuredKeysCount > 0
+                  ? 'border-emerald-300 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+              }`}
+              title="Manage Provider API Keys and Custom Endpoints"
+            >
+              <Key className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span className="hidden sm:inline">APIs & Tokens</span>
+              <span className="rounded-full bg-indigo-100 px-1.5 py-0.2 text-[10px] font-mono text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                {configuredKeysCount}
+              </span>
+            </button>
+          )}
+
           <div className="hidden sm:flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
             <span className={`h-2 w-2 rounded-full bg-emerald-500 ${isRunning ? 'animate-ping' : 'animate-pulse'}`} />
             <span>{isRunning ? 'Benchmarking Active' : 'Arena Ready'}</span>

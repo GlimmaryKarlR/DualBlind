@@ -224,6 +224,102 @@ function generateSyntheticTurnFallback(
   };
 }
 
+// Helper to call OpenAI-compatible APIs (DeepSeek, Moonshot, Qwen, xAI, OpenAI, Mistral, OpenRouter, Custom)
+async function callOpenAICompatible(
+  endpointUrl: string,
+  apiKey: string,
+  modelName: string,
+  messages: Array<{ role: string; content: string }>,
+  temperature: number
+): Promise<{ text: string; usageMetadata: any; modelUsed: string }> {
+  const res = await fetch(endpointUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages,
+      temperature: Math.min(1.0, Math.max(0.0, temperature ?? 0.4)),
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Provider API error (${res.status}): ${errorText.substring(0, 200)}`);
+  }
+
+  const data: any = await res.json();
+  const choice = data.choices && data.choices[0];
+  const messageContent = choice?.message?.content || choice?.text || '';
+  const inputToks = data.usage?.prompt_tokens || Math.max(80, Math.round(JSON.stringify(messages).length / 4));
+  const outputToks = data.usage?.completion_tokens || Math.max(40, Math.round(messageContent.length / 4));
+
+  return {
+    text: messageContent,
+    usageMetadata: {
+      promptTokenCount: inputToks,
+      candidatesTokenCount: outputToks,
+      totalTokenCount: inputToks + outputToks,
+    },
+    modelUsed: modelName,
+  };
+}
+
+// Helper to call Anthropic Claude API
+async function callAnthropicMessages(
+  apiKey: string,
+  modelName: string,
+  systemInstruction: string,
+  messages: Array<{ role: string; content: string }>,
+  temperature: number
+): Promise<{ text: string; usageMetadata: any; modelUsed: string }> {
+  // Convert standard messages to Anthropic format (roles: 'user' | 'assistant')
+  const anthropicMessages = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({
+      role: m.role === 'model' || m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content,
+    }));
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: modelName.includes('claude') ? modelName : 'claude-3-7-sonnet-20250219',
+      max_tokens: 2048,
+      system: systemInstruction,
+      messages: anthropicMessages,
+      temperature: Math.min(1.0, Math.max(0.0, temperature ?? 0.4)),
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Anthropic API error (${res.status}): ${errorText.substring(0, 200)}`);
+  }
+
+  const data: any = await res.json();
+  const text = data.content?.[0]?.text || '';
+  const inputToks = data.usage?.input_tokens || Math.max(80, Math.round(JSON.stringify(messages).length / 4));
+  const outputToks = data.usage?.output_tokens || Math.max(40, Math.round(text.length / 4));
+
+  return {
+    text,
+    usageMetadata: {
+      promptTokenCount: inputToks,
+      candidatesTokenCount: outputToks,
+      totalTokenCount: inputToks + outputToks,
+    },
+    modelUsed: modelName,
+  };
+}
+
 // Resilient Gemini API caller with exponential backoff, model switching, and graceful fallback
 async function callGeminiWithResilience(
   ai: GoogleGenAI,
@@ -300,13 +396,11 @@ async function callGeminiWithResilience(
 app.post('/api/benchmark/generate-turn', async (req, res) => {
   const startTime = Date.now();
   try {
-    const { problem, agent, partnerName, history, currentTurn, isUncapped, maxTurnsPerAgent } = req.body;
+    const { problem, agent, partnerName, history, currentTurn, isUncapped, maxTurnsPerAgent, apiKeys } = req.body;
 
     if (!problem || !agent) {
       return res.status(400).json({ error: 'Missing required problem or agent data' });
     }
-
-    const ai = getGenAI();
 
     const turnConstraint = isUncapped
       ? `3. TURN PROTOCOL: This is turn ${currentTurn + 1}. There is NO artificial turn cap. You and ${partnerName} must converse, verify calculations, and resolve any discrepancies until you reach genuine consensus. Work diligently and avoid wasteful loops, because inference token cost and time-to-consensus are being measured.`
@@ -324,66 +418,211 @@ ${turnConstraint}
 5. Do NOT include FINAL ANSWER: [...] until you are genuinely confident and in agreement with your partner, or if you are resolving a conclusive proof.
 ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}` : ''}`;
 
-    // Construct conversation history for the prompt
-    const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+    // Standard OpenAI/Anthropic message array representation
+    const chatMessages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: systemInstruction },
+      {
+        role: 'user',
+        content: `[BENCHMARK CHALLENGE - TOPIC: ${problem.topic.toUpperCase()}]\nTitle: ${problem.title}\nDifficulty: ${problem.difficulty}\n\nProblem Statement:\n${problem.question}\n\n${partnerName} and you should now discuss this problem and reach a definitive final answer in the format: ${problem.expectedFormat}.`,
+      },
+    ];
 
-    // The initial prompt sets up the challenge
-    const initialUserPrompt = `[BENCHMARK CHALLENGE - TOPIC: ${problem.topic.toUpperCase()}]
-Title: ${problem.title}
-Difficulty: ${problem.difficulty}
-
-Problem Statement:
-${problem.question}
-
-${partnerName} and you should now discuss this problem and reach a definitive final answer in the format: ${problem.expectedFormat}.`;
-
-    contents.push({
-      role: 'user',
-      parts: [{ text: initialUserPrompt }],
-    });
-
-    // Add prior turn history
     if (Array.isArray(history) && history.length > 0) {
       for (const item of history) {
         if (item.isCurrentAgent) {
-          contents.push({
-            role: 'model',
-            parts: [{ text: item.text }],
-          });
+          chatMessages.push({ role: 'assistant', content: item.text });
         } else {
-          contents.push({
-            role: 'user',
-            parts: [{ text: `${item.sender}: ${item.text}` }],
-          });
+          chatMessages.push({ role: 'user', content: `${item.sender}: ${item.text}` });
         }
       }
     } else {
-      // First turn of the conversation
-      contents.push({
+      chatMessages.push({
         role: 'user',
-        parts: [{ text: `Hello ${agent.name}, let's solve this challenge together. What are your initial thoughts or calculation steps on this problem?` }],
+        content: `Hello ${agent.name}, let's solve this challenge together. What are your initial thoughts or calculation steps on this problem?`,
       });
     }
 
-    const { text: responseText, usageMetadata: usage, modelUsed } = await callGeminiWithResilience(
-      ai,
-      agent.model || 'gemini-3.7-flash',
-      contents,
-      systemInstruction,
-      agent.temperature ?? 0.4,
-      problem,
-      agent,
-      partnerName,
-      history || [],
-      currentTurn || 0
-    );
+    let responseText = '';
+    let usage: any = null;
+    let modelUsed = agent.model || 'gemini-3.7-flash';
+
+    const provider = (agent.provider || '').toLowerCase();
+
+    // Check if user provided API key for specific providers
+    if (provider === 'openai' && apiKeys?.openai) {
+      const openAiRes = await callOpenAICompatible(
+        'https://api.openai.com/v1/chat/completions',
+        apiKeys.openai,
+        agent.model || 'gpt-4o',
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = openAiRes.text;
+      usage = openAiRes.usageMetadata;
+      modelUsed = openAiRes.modelUsed;
+    } else if (provider === 'anthropic' && apiKeys?.anthropic) {
+      const anthropicRes = await callAnthropicMessages(
+        apiKeys.anthropic,
+        agent.model || 'claude-3-7-sonnet-20250219',
+        systemInstruction,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = anthropicRes.text;
+      usage = anthropicRes.usageMetadata;
+      modelUsed = anthropicRes.modelUsed;
+    } else if (provider === 'deepseek' && apiKeys?.deepseek) {
+      const targetModel = agent.model === 'deepseek-r1' ? 'deepseek-reasoner' : 'deepseek-chat';
+      const deepseekRes = await callOpenAICompatible(
+        'https://api.deepseek.com/chat/completions',
+        apiKeys.deepseek,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = deepseekRes.text;
+      usage = deepseekRes.usageMetadata;
+      modelUsed = deepseekRes.modelUsed;
+    } else if (provider === 'moonshot' && apiKeys?.moonshot) {
+      const targetModel = agent.model === 'kimi-chat-128k' ? 'moonshot-v1-128k' : 'kimi-k1.5';
+      const moonshotRes = await callOpenAICompatible(
+        'https://api.moonshot.cn/v1/chat/completions',
+        apiKeys.moonshot,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = moonshotRes.text;
+      usage = moonshotRes.usageMetadata;
+      modelUsed = moonshotRes.modelUsed;
+    } else if (provider === 'qwen' && apiKeys?.qwen) {
+      const targetModel =
+        agent.model === 'qwen-2-5-72b'
+          ? 'qwen2.5-72b-instruct'
+          : agent.model === 'qwen-2-5-coder'
+          ? 'qwen2.5-coder-32b-instruct'
+          : 'qwen-max';
+      const qwenRes = await callOpenAICompatible(
+        'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
+        apiKeys.qwen,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = qwenRes.text;
+      usage = qwenRes.usageMetadata;
+      modelUsed = qwenRes.modelUsed;
+    } else if (provider === 'xai' && apiKeys?.xai) {
+      const targetModel = agent.model === 'grok-3-mini' ? 'grok-3-mini' : agent.model === 'grok-2' ? 'grok-2-1212' : 'grok-3';
+      const xaiRes = await callOpenAICompatible(
+        'https://api.x.ai/v1/chat/completions',
+        apiKeys.xai,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = xaiRes.text;
+      usage = xaiRes.usageMetadata;
+      modelUsed = xaiRes.modelUsed;
+    } else if (provider === 'mistral' && apiKeys?.mistral) {
+      const targetModel = agent.model === 'codestral' ? 'codestral-latest' : 'mistral-large-latest';
+      const mistralRes = await callOpenAICompatible(
+        'https://api.mistral.ai/v1/chat/completions',
+        apiKeys.mistral,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = mistralRes.text;
+      usage = mistralRes.usageMetadata;
+      modelUsed = mistralRes.modelUsed;
+    } else if (apiKeys?.openrouter && (provider === 'meta' || provider === 'cohere' || provider === 'microsoft' || provider === 'amazon' || provider === 'custom')) {
+      const targetModel =
+        agent.model === 'llama-3-3-70b'
+          ? 'meta-llama/llama-3.3-70b-instruct'
+          : agent.model === 'command-r-plus'
+          ? 'cohere/command-r-plus-08-2024'
+          : agent.model === 'phi-4'
+          ? 'microsoft/phi-4'
+          : agent.model;
+      const openRouterRes = await callOpenAICompatible(
+        'https://openrouter.ai/api/v1/chat/completions',
+        apiKeys.openrouter,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = openRouterRes.text;
+      usage = openRouterRes.usageMetadata;
+      modelUsed = openRouterRes.modelUsed;
+    } else if (apiKeys?.customEndpoint?.baseUrl && apiKeys.customEndpoint.apiKey) {
+      const endpoint = `${apiKeys.customEndpoint.baseUrl.replace(/\/$/, '')}/chat/completions`;
+      const customRes = await callOpenAICompatible(
+        endpoint,
+        apiKeys.customEndpoint.apiKey,
+        apiKeys.customEndpoint.modelName || agent.model || 'custom-llm',
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = customRes.text;
+      usage = customRes.usageMetadata;
+      modelUsed = customRes.modelUsed;
+    } else {
+      // Default / Google Gemini execution with user or platform key
+      const ai = apiKeys?.google
+        ? new GoogleGenAI({
+            apiKey: apiKeys.google,
+            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+          })
+        : getGenAI();
+
+      const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+      contents.push({
+        role: 'user',
+        parts: [{
+          text: `[BENCHMARK CHALLENGE - TOPIC: ${problem.topic.toUpperCase()}]\nTitle: ${problem.title}\nDifficulty: ${problem.difficulty}\n\nProblem Statement:\n${problem.question}\n\n${partnerName} and you should now discuss this problem and reach a definitive final answer in the format: ${problem.expectedFormat}.`,
+        }],
+      });
+
+      if (Array.isArray(history) && history.length > 0) {
+        for (const item of history) {
+          if (item.isCurrentAgent) {
+            contents.push({ role: 'model', parts: [{ text: item.text }] });
+          } else {
+            contents.push({ role: 'user', parts: [{ text: `${item.sender}: ${item.text}` }] });
+          }
+        }
+      } else {
+        contents.push({
+          role: 'user',
+          parts: [{ text: `Hello ${agent.name}, let's solve this challenge together. What are your initial thoughts or calculation steps on this problem?` }],
+        });
+      }
+
+      const geminiRes = await callGeminiWithResilience(
+        ai,
+        agent.model || 'gemini-3.7-flash',
+        contents,
+        systemInstruction,
+        agent.temperature ?? 0.4,
+        problem,
+        agent,
+        partnerName,
+        history || [],
+        currentTurn || 0
+      );
+
+      responseText = geminiRes.text;
+      usage = geminiRes.usageMetadata;
+      modelUsed = geminiRes.modelUsed;
+    }
 
     const endTime = Date.now();
     const latencyMs = endTime - startTime;
 
     const extractedAnswer = extractFinalAnswer(responseText);
 
-    const inputTokens = usage?.promptTokenCount || Math.max(80, Math.round(JSON.stringify(contents).length / 4));
+    const inputTokens = usage?.promptTokenCount || Math.max(80, Math.round(JSON.stringify(chatMessages).length / 4));
     const outputTokens = usage?.candidatesTokenCount || Math.max(40, Math.round(responseText.length / 4));
     const totalTokens = usage?.totalTokenCount || (inputTokens + outputTokens);
     const costUsd = calculateInferenceCost(inputTokens, outputTokens);
