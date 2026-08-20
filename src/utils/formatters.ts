@@ -112,6 +112,24 @@ export function calculateTokenCost(
     } else if (m.includes('yi-') || m.includes('01.ai')) {
       inRate = 0.14;
       outRate = 0.14;
+    } else if (m.includes('phi-3-5-mini') || m.includes('phi-3.5-mini')) {
+      inRate = 0.05;
+      outRate = 0.15;
+    } else if (m.includes('phi-3-5-moe') || m.includes('phi-3.5-moe')) {
+      inRate = 0.15;
+      outRate = 0.60;
+    } else if (m.includes('phi-4') || m.includes('phi') || m.includes('microsoft')) {
+      inRate = 0.10;
+      outRate = 0.40;
+    } else if (m.includes('nova-pro') || m.includes('amazon-nova-pro')) {
+      inRate = 0.80;
+      outRate = 3.20;
+    } else if (m.includes('nova-lite') || m.includes('amazon-nova-lite')) {
+      inRate = 0.06;
+      outRate = 0.24;
+    } else if (m.includes('nova-micro') || m.includes('amazon-nova-micro')) {
+      inRate = 0.035;
+      outRate = 0.14;
     } else if (m.includes('command-r') || m.includes('cohere')) {
       inRate = 2.50;
       outRate = 10.00;

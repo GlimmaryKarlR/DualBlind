@@ -40,7 +40,20 @@ export interface AgentConfig {
   name: string;
   brand?: string;
   model: string;
-  provider?: 'google' | 'anthropic' | 'openai' | 'deepseek' | 'moonshot' | 'qwen' | 'mistral' | 'meta' | 'xai' | 'cohere' | 'custom';
+  provider?:
+    | 'google'
+    | 'anthropic'
+    | 'openai'
+    | 'deepseek'
+    | 'moonshot'
+    | 'qwen'
+    | 'mistral'
+    | 'meta'
+    | 'xai'
+    | 'microsoft'
+    | 'amazon'
+    | 'cohere'
+    | 'custom';
   isManualExternal?: boolean;
   customBrand?: string;
   customModel?: string;

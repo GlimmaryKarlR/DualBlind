@@ -175,6 +175,16 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                     <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro ($1.25 / $5.00)</option>
                     <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite ($0.075 / $0.30)</option>
                   </optgroup>
+                  <optgroup label="Microsoft (External / Copilot / Azure)">
+                    <option value="phi-4">Microsoft • Phi-4 14B ($0.10 / $0.40)</option>
+                    <option value="phi-3-5-moe">Microsoft • Phi-3.5 MoE ($0.15 / $0.60)</option>
+                    <option value="phi-3-5-mini">Microsoft • Phi-3.5 Mini ($0.05 / $0.15)</option>
+                  </optgroup>
+                  <optgroup label="Amazon (External / AWS Bedrock / Nova)">
+                    <option value="amazon-nova-pro">Amazon • Nova Pro ($0.80 / $3.20)</option>
+                    <option value="amazon-nova-lite">Amazon • Nova Lite ($0.06 / $0.24)</option>
+                    <option value="amazon-nova-micro">Amazon • Nova Micro ($0.035 / $0.14)</option>
+                  </optgroup>
                   <optgroup label="Moonshot AI (External / Kimi)">
                     <option value="kimi-k1-5">Moonshot • Kimi k1.5 ($1.00 / $4.00)</option>
                     <option value="kimi-chat-128k">Moonshot • Kimi Chat 128k ($0.80 / $3.20)</option>
@@ -320,6 +330,16 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                     <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash ($0.15 / $0.60)</option>
                     <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro ($1.25 / $5.00)</option>
                     <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite ($0.075 / $0.30)</option>
+                  </optgroup>
+                  <optgroup label="Microsoft (External / Copilot / Azure)">
+                    <option value="phi-4">Microsoft • Phi-4 14B ($0.10 / $0.40)</option>
+                    <option value="phi-3-5-moe">Microsoft • Phi-3.5 MoE ($0.15 / $0.60)</option>
+                    <option value="phi-3-5-mini">Microsoft • Phi-3.5 Mini ($0.05 / $0.15)</option>
+                  </optgroup>
+                  <optgroup label="Amazon (External / AWS Bedrock / Nova)">
+                    <option value="amazon-nova-pro">Amazon • Nova Pro ($0.80 / $3.20)</option>
+                    <option value="amazon-nova-lite">Amazon • Nova Lite ($0.06 / $0.24)</option>
+                    <option value="amazon-nova-micro">Amazon • Nova Micro ($0.035 / $0.14)</option>
                   </optgroup>
                   <optgroup label="Moonshot AI (External / Kimi)">
                     <option value="kimi-k1-5">Moonshot • Kimi k1.5 ($1.00 / $4.00)</option>

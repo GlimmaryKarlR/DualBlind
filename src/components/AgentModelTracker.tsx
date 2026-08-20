@@ -110,7 +110,7 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
             Agent Company & Model Configuration
           </h3>
           <span className="text-[10px] text-slate-700 dark:text-slate-400">
-            (Switch between Google, xAI Grok, Anthropic Claude, OpenAI GPT, DeepSeek, or Custom)
+            (Google, Microsoft, Amazon, xAI, Claude, OpenAI, DeepSeek, Kimi, Qwen, Mistral)
           </span>
         </div>
 
@@ -172,6 +172,16 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
                 <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash</option>
                 <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro</option>
                 <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
+              </optgroup>
+              <optgroup label="Microsoft (External / Copilot / Azure)">
+                <option value="phi-4">Microsoft • Phi-4 (14B)</option>
+                <option value="phi-3-5-moe">Microsoft • Phi-3.5 MoE</option>
+                <option value="phi-3-5-mini">Microsoft • Phi-3.5 Mini</option>
+              </optgroup>
+              <optgroup label="Amazon (External / AWS Bedrock / Nova)">
+                <option value="amazon-nova-pro">Amazon • Nova Pro</option>
+                <option value="amazon-nova-lite">Amazon • Nova Lite</option>
+                <option value="amazon-nova-micro">Amazon • Nova Micro</option>
               </optgroup>
               <optgroup label="Moonshot AI (External / Kimi)">
                 <option value="kimi-k1-5">Moonshot • Kimi k1.5</option>
@@ -286,6 +296,16 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
                 <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash</option>
                 <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro</option>
                 <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
+              </optgroup>
+              <optgroup label="Microsoft (External / Copilot / Azure)">
+                <option value="phi-4">Microsoft • Phi-4 (14B)</option>
+                <option value="phi-3-5-moe">Microsoft • Phi-3.5 MoE</option>
+                <option value="phi-3-5-mini">Microsoft • Phi-3.5 Mini</option>
+              </optgroup>
+              <optgroup label="Amazon (External / AWS Bedrock / Nova)">
+                <option value="amazon-nova-pro">Amazon • Nova Pro</option>
+                <option value="amazon-nova-lite">Amazon • Nova Lite</option>
+                <option value="amazon-nova-micro">Amazon • Nova Micro</option>
               </optgroup>
               <optgroup label="Moonshot AI (External / Kimi)">
                 <option value="kimi-k1-5">Moonshot • Kimi k1.5</option>
