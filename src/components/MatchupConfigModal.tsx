@@ -387,6 +387,7 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                         <option value="yi-lightning">01.AI • Yi-Lightning ($0.14 / $0.14)</option>
                         <option value="command-r-plus">Cohere • Command R+ ($2.50 / $10.00)</option>
                         <option value="llama-3-3-70b">Meta • Llama 3.3 70B ($0.50 / $0.80)</option>
+                        <option value="OpenRouter">Any • Any ($0.01 / $0.01)</option>
                         <option value="custom-external">Custom / Other Model (User Defined)</option>
                       </optgroup>
                     </select>
