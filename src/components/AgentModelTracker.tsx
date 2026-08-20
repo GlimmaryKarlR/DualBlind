@@ -1,7 +1,8 @@
 import React from 'react';
-import { AgentConfig, ChatTurn } from '../types/benchmark';
+import { AgentConfig, ChatTurn, ProviderApiKeys } from '../types/benchmark';
 import { parseModelBrandInfo, MODEL_PRESETS, ModelPreset } from '../utils/modelTracker';
-import { Bot, Sparkles, AlertTriangle, ShieldCheck, Cpu, Clock, Sliders, ExternalLink, ChevronDown } from 'lucide-react';
+import { hasConfiguredKeyForProvider } from '../utils/tokenStorage';
+import { Bot, Sparkles, AlertTriangle, ShieldCheck, Cpu, Clock, Sliders, ExternalLink, ChevronDown, Key, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 
 interface AgentModelTrackerProps {
@@ -12,6 +13,8 @@ interface AgentModelTrackerProps {
   lastTurnAgentA?: ChatTurn | null;
   lastTurnAgentB?: ChatTurn | null;
   onOpenConfig: () => void;
+  onOpenTokens?: () => void;
+  apiKeys?: ProviderApiKeys;
   isRunning: boolean;
 }
 
@@ -23,6 +26,8 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
   lastTurnAgentA,
   lastTurnAgentB,
   onOpenConfig,
+  onOpenTokens,
+  apiKeys = {},
   isRunning,
 }) => {
   const modelInfoA = parseModelBrandInfo(
@@ -39,6 +44,9 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
     agentB.customBrand,
     agentB.customModel
   );
+
+  const hasKeyA = hasConfiguredKeyForProvider(agentA.provider, apiKeys);
+  const hasKeyB = hasConfiguredKeyForProvider(agentB.provider, apiKeys);
 
   const handleSelectPreset = (agentKey: 'agentA' | 'agentB', presetId: string) => {
     const preset = MODEL_PRESETS.find((p) => p.id === presetId);
@@ -67,7 +75,15 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
     }
   };
 
-  const getStatusBadge = (info: ReturnType<typeof parseModelBrandInfo>) => {
+  const getStatusBadge = (info: ReturnType<typeof parseModelBrandInfo>, hasKey: boolean) => {
+    if (hasKey) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+          <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+          <span>Direct Key Active</span>
+        </span>
+      );
+    }
     if (info.statusType === 'manual_external') {
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
@@ -114,14 +130,27 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
           </span>
         </div>
 
-        <button
-          onClick={onOpenConfig}
-          disabled={isRunning}
-          className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 cursor-pointer disabled:opacity-50"
-        >
-          <Sliders className="h-3.5 w-3.5" />
-          <span>Advanced Setup</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenTokens && (
+            <button
+              onClick={onOpenTokens}
+              disabled={isRunning}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 cursor-pointer disabled:opacity-50"
+            >
+              <Key className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+              <span>APIs & Tokens</span>
+            </button>
+          )}
+
+          <button
+            onClick={onOpenConfig}
+            disabled={isRunning}
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 cursor-pointer disabled:opacity-50"
+          >
+            <Sliders className="h-3 w-3" />
+            <span>Advanced Setup</span>
+          </button>
+        </div>
       </div>
 
       {/* Side-by-side Agent Model Cards */}
@@ -153,7 +182,7 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
               </div>
             </div>
 
-            <div>{getStatusBadge(modelInfoA)}</div>
+            <div>{getStatusBadge(modelInfoA, hasKeyA)}</div>
           </div>
 
           {/* Direct Dropdown Selector */}
@@ -277,7 +306,7 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
               </div>
             </div>
 
-            <div>{getStatusBadge(modelInfoB)}</div>
+            <div>{getStatusBadge(modelInfoB, hasKeyB)}</div>
           </div>
 
           {/* Direct Dropdown Selector */}

@@ -139,6 +139,26 @@ export interface BenchmarkRunRecord {
   metrics: BenchmarkMetrics;
 }
 
+export interface ProviderApiKeys {
+  google?: string;
+  openai?: string;
+  anthropic?: string;
+  xai?: string;
+  deepseek?: string;
+  moonshot?: string; // Kimi
+  qwen?: string; // Alibaba DashScope
+  mistral?: string;
+  cohere?: string;
+  microsoft?: string; // Azure / GitHub Models
+  amazon?: string; // AWS Bedrock
+  openrouter?: string; // OpenRouter universal key
+  customEndpoint?: {
+    baseUrl: string;
+    apiKey: string;
+    modelName: string;
+  };
+}
+
 export interface GenerateTurnRequest {
   problem: BenchmarkProblem;
   agent: AgentConfig;
@@ -151,6 +171,7 @@ export interface GenerateTurnRequest {
   currentTurn: number;
   isUncapped: boolean;
   maxTurnsPerAgent?: number;
+  apiKeys?: ProviderApiKeys;
 }
 
 export interface GenerateTurnResponse {

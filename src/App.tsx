@@ -10,7 +10,9 @@ import {
   BenchmarkMetrics,
   BenchmarkRunRecord,
   TeamFunctionalityRating,
+  ProviderApiKeys,
 } from './types/benchmark';
+import { getStoredApiKeys, countConfiguredKeys } from './utils/tokenStorage';
 import { BENCHMARK_PROBLEMS } from './data/benchmarkProblems';
 import { Navbar } from './components/Navbar';
 import { ArenaHeader } from './components/ArenaHeader';
@@ -106,9 +108,21 @@ export default function App() {
   const [isRunSaved, setIsRunSaved] = useState<boolean>(false);
   const [turnError, setTurnError] = useState<string | null>(null);
 
-  // Modals
+  // Modals & Token Config
   const [isResultModalOpen, setIsResultModalOpen] = useState<boolean>(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState<boolean>(false);
+  const [configModalTab, setConfigModalTab] = useState<'matchup' | 'tokens'>('matchup');
+  const [apiKeys, setApiKeys] = useState<ProviderApiKeys>(() => getStoredApiKeys());
+
+  const handleOpenConfig = useCallback(() => {
+    setConfigModalTab('matchup');
+    setIsConfigModalOpen(true);
+  }, []);
+
+  const handleOpenTokens = useCallback(() => {
+    setConfigModalTab('tokens');
+    setIsConfigModalOpen(true);
+  }, []);
 
   // Refs
   const isRunningRef = useRef(isRunning);
@@ -367,6 +381,7 @@ export default function App() {
             currentTurn: currentTurnList.length,
             maxTurnsPerAgent: isUncapped ? 999 : Math.floor(maxTurns / 2),
             isUncapped,
+            apiKeys,
           }),
         });
 
@@ -836,6 +851,8 @@ export default function App() {
         onSelectTab={setCurrentTab}
         onRandomChallenge={handleRandomChallenge}
         isRunning={isRunning}
+        onOpenTokens={handleOpenTokens}
+        configuredKeysCount={countConfiguredKeys(apiKeys)}
       />
 
       {/* Main Container */}
@@ -924,7 +941,9 @@ export default function App() {
               onChangeAgentB={setAgentB}
               lastTurnAgentA={turns.slice().reverse().find((t) => t.agentId === 'agent_a') || null}
               lastTurnAgentB={turns.slice().reverse().find((t) => t.agentId === 'agent_b') || null}
-              onOpenConfig={() => setIsConfigModalOpen(true)}
+              onOpenConfig={handleOpenConfig}
+              onOpenTokens={handleOpenTokens}
+              apiKeys={apiKeys}
               isRunning={isRunning}
             />
 
@@ -1044,15 +1063,20 @@ export default function App() {
       <MatchupConfigModal
         isOpen={isConfigModalOpen}
         onClose={() => setIsConfigModalOpen(false)}
+        initialTab={configModalTab}
         agentA={agentA}
         agentB={agentB}
         maxTurns={maxTurns}
         isUncapped={isUncapped}
-        onSaveConfig={(newA, newB, newMaxTurns, newIsUncapped) => {
+        apiKeys={apiKeys}
+        onSaveConfig={(newA, newB, newMaxTurns, newIsUncapped, updatedApiKeys) => {
           setAgentA(newA);
           setAgentB(newB);
           setMaxTurns(newMaxTurns);
           setIsUncapped(newIsUncapped);
+          if (updatedApiKeys) {
+            setApiKeys(updatedApiKeys);
+          }
           handleReset();
         }}
       />
