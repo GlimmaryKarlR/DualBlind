@@ -146,6 +146,8 @@ export const ExternalAgentInputCard: React.FC<ExternalAgentInputCardProps> = ({
 
   const getProviderLink = (brand: string) => {
     const b = brand.toLowerCase();
+    if (b.includes('microsoft') || b.includes('phi') || b.includes('azure')) return 'https://copilot.microsoft.com';
+    if (b.includes('amazon') || b.includes('nova') || b.includes('aws') || b.includes('bedrock')) return 'https://aws.amazon.com/bedrock';
     if (b.includes('xai') || b.includes('grok')) return 'https://grok.com';
     if (b.includes('kimi') || b.includes('moonshot')) return 'https://kimi.moonshot.cn';
     if (b.includes('deepseek')) return 'https://chat.deepseek.com';

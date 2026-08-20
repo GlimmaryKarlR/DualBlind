@@ -22,6 +22,8 @@ export interface ModelPreset {
     | 'qwen'
     | 'xai'
     | 'mistral'
+    | 'microsoft'
+    | 'amazon'
     | 'cohere'
     | 'meta'
     | 'custom';
@@ -216,6 +218,70 @@ export const MODEL_PRESETS: ModelPreset[] = [
     outputPricePerMillion: 0.90,
   },
 
+  // Microsoft (External / Azure / Copilot)
+  {
+    id: 'phi-4',
+    provider: 'microsoft',
+    brand: 'Microsoft',
+    name: 'Microsoft Phi-4 (14B)',
+    modelCode: 'phi-4',
+    isExternal: true,
+    inputPricePerMillion: 0.10,
+    outputPricePerMillion: 0.40,
+  },
+  {
+    id: 'phi-3-5-moe',
+    provider: 'microsoft',
+    brand: 'Microsoft',
+    name: 'Microsoft Phi-3.5 MoE',
+    modelCode: 'phi-3-5-moe',
+    isExternal: true,
+    inputPricePerMillion: 0.15,
+    outputPricePerMillion: 0.60,
+  },
+  {
+    id: 'phi-3-5-mini',
+    provider: 'microsoft',
+    brand: 'Microsoft',
+    name: 'Microsoft Phi-3.5 Mini',
+    modelCode: 'phi-3-5-mini',
+    isExternal: true,
+    inputPricePerMillion: 0.05,
+    outputPricePerMillion: 0.15,
+  },
+
+  // Amazon (External / AWS Bedrock / Nova)
+  {
+    id: 'amazon-nova-pro',
+    provider: 'amazon',
+    brand: 'Amazon (AWS)',
+    name: 'Amazon Nova Pro',
+    modelCode: 'amazon-nova-pro',
+    isExternal: true,
+    inputPricePerMillion: 0.80,
+    outputPricePerMillion: 3.20,
+  },
+  {
+    id: 'amazon-nova-lite',
+    provider: 'amazon',
+    brand: 'Amazon (AWS)',
+    name: 'Amazon Nova Lite',
+    modelCode: 'amazon-nova-lite',
+    isExternal: true,
+    inputPricePerMillion: 0.06,
+    outputPricePerMillion: 0.24,
+  },
+  {
+    id: 'amazon-nova-micro',
+    provider: 'amazon',
+    brand: 'Amazon (AWS)',
+    name: 'Amazon Nova Micro',
+    modelCode: 'amazon-nova-micro',
+    isExternal: true,
+    inputPricePerMillion: 0.035,
+    outputPricePerMillion: 0.14,
+  },
+
   // 01.AI (Yi)
   {
     id: 'yi-lightning',
@@ -385,6 +451,8 @@ export function parseModelBrandInfo(
     else if (matchedPreset.provider === 'moonshot') brandColor = 'rose';
     else if (matchedPreset.provider === 'qwen') brandColor = 'orange';
     else if (matchedPreset.provider === 'mistral') brandColor = 'amber';
+    else if (matchedPreset.provider === 'microsoft') brandColor = 'cyan';
+    else if (matchedPreset.provider === 'amazon') brandColor = 'amber';
     else if (matchedPreset.provider === 'cohere') brandColor = 'teal';
     else if (matchedPreset.provider === 'anthropic') brandColor = 'amber';
     else if (matchedPreset.provider === 'openai') brandColor = 'emerald';
@@ -392,6 +460,18 @@ export function parseModelBrandInfo(
     else if (matchedPreset.provider === 'meta') brandColor = 'blue';
     else if (matchedPreset.provider === 'custom') brandColor = 'purple';
     else brandColor = 'indigo';
+  } else if (model.includes('phi-') || model.includes('microsoft')) {
+    brand = 'Microsoft';
+    brandColor = 'cyan';
+    displayName = customModel || (model.includes('3-5-mini') ? 'Microsoft Phi-3.5 Mini' : model.includes('moe') ? 'Microsoft Phi-3.5 MoE' : 'Microsoft Phi-4');
+    inputPrice = model.includes('mini') ? 0.05 : model.includes('moe') ? 0.15 : 0.10;
+    outputPrice = model.includes('mini') ? 0.15 : model.includes('moe') ? 0.60 : 0.40;
+  } else if (model.includes('nova-') || model.includes('amazon') || model.includes('bedrock')) {
+    brand = 'Amazon (AWS)';
+    brandColor = 'amber';
+    displayName = customModel || (model.includes('lite') ? 'Amazon Nova Lite' : model.includes('micro') ? 'Amazon Nova Micro' : 'Amazon Nova Pro');
+    inputPrice = model.includes('lite') ? 0.06 : model.includes('micro') ? 0.035 : 0.80;
+    outputPrice = model.includes('lite') ? 0.24 : model.includes('micro') ? 0.14 : 3.20;
   } else if (model.includes('kimi') || model.includes('moonshot')) {
     brand = 'Moonshot AI';
     brandColor = 'rose';
