@@ -5,8 +5,6 @@ import {
   Cpu,
   Target,
   DollarSign,
-  TrendingUp,
-  AlertTriangle,
   Flame,
   ShieldCheck,
   Ban,
@@ -48,190 +46,120 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
 
   // Compute burn velocity ($/min)
   const wallClockMinutes = metrics.totalWallClockMs > 0 ? metrics.totalWallClockMs / 60000 : 0.001;
-  const burnRatePerMin = metrics.totalCostUsd > 0 ? (metrics.totalCostUsd / wallClockMinutes) : 0;
+  const burnRatePerMin = metrics.totalCostUsd > 0 ? metrics.totalCostUsd / wallClockMinutes : 0;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* 1. Main Cost & Time-to-Consensus Hero Card */}
-      <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-white via-indigo-50/40 to-blue-50/50 p-5 shadow-xs dark:border-indigo-950/60 dark:from-slate-900 dark:via-indigo-950/20 dark:to-slate-900">
-        <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-3">
+      {/* 1. Main Telemetry HUD Card */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        {/* Header with Efficiency Index & Tier */}
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
-              <Zap className="h-4 w-4 fill-current" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-2xs">
+              <Zap className="h-3.5 w-3.5 fill-current" />
             </div>
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300">
-                Consensus Efficiency Index
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Efficiency Index
               </h3>
-              <p className="text-[11px] text-slate-700 dark:text-slate-400">
-                Accuracy ÷ (Time to Consensus × Total Tokens)
+              <p className="text-[10px] text-slate-700 dark:text-slate-400">
+                Accuracy ÷ (Time × Compute Tokens)
               </p>
             </div>
           </div>
 
-          <span
-            className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${tier.bg} ${tier.color} ${tier.border}`}
-          >
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${tier.bg} ${tier.color} ${tier.border}`}>
             {tier.label}
           </span>
         </div>
 
-        {/* Big Score Display */}
-        <div className="mt-4 flex items-baseline justify-between border-b border-indigo-100/80 pb-3 dark:border-indigo-900/40">
-          <div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white font-mono">
-                {metrics.efficiencyIndex > 0 ? metrics.efficiencyIndex.toFixed(1) : '--'}
-              </span>
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-400">
-                pts
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-700 dark:text-slate-400">
-              Measures inference speed, cost minimization & collaborative accuracy
-            </p>
+        {/* Big Score Row */}
+        <div className="mt-3 flex items-baseline justify-between">
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white font-mono">
+              {metrics.efficiencyIndex > 0 ? metrics.efficiencyIndex.toFixed(1) : '--'}
+            </span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-400">pts</span>
           </div>
 
-          {/* Mini Real-Time Formula breakdown */}
-          <div className="text-right font-mono text-[11px] text-slate-600 dark:text-slate-400 bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
-            <div className="text-[10px] uppercase font-bold text-slate-700 dark:text-slate-300">
-              Live Evaluation
-            </div>
-            <div>Acc: <span className="font-bold text-emerald-600 dark:text-emerald-400">{metrics.accuracyScore}%</span></div>
-            <div>Time: <span className="font-bold">{wallClockSec}s</span></div>
-            <div>Cost: <span className="font-bold text-indigo-600 dark:text-indigo-400">{formatCurrency(metrics.totalCostUsd)}</span></div>
+          <div className="flex items-center gap-2 text-xs font-mono">
+            <span className="text-slate-700 dark:text-slate-400">Accuracy:</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+              {metrics.accuracyScore}%
+            </span>
           </div>
         </div>
 
-        {/* Team Collaboration & Functionality Banner */}
-        <div className="mt-3 rounded-xl border p-3 bg-white/70 dark:bg-slate-900/70 space-y-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-              <Activity className="h-3.5 w-3.5 text-indigo-500" />
-              Team Functionality:
+        {/* Core Stats Grid */}
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+          <div className="rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/50">
+            <span className="text-[10px] font-bold uppercase text-slate-700 dark:text-slate-400 block">Total Cost</span>
+            <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">
+              {formatCurrency(metrics.totalCostUsd)}
             </span>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold border ${teamBadge.bg} ${teamBadge.color} ${teamBadge.border}`}>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/50">
+            <span className="text-[10px] font-bold uppercase text-slate-700 dark:text-slate-400 block">Time</span>
+            <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">
+              {wallClockSec}s
+            </span>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/50">
+            <span className="text-[10px] font-bold uppercase text-slate-700 dark:text-slate-400 block">Compute</span>
+            <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">
+              {formatNumber(metrics.totalTokens)} <span className="text-[10px] font-normal text-slate-700 dark:text-slate-400">tok</span>
+            </span>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/50">
+            <span className="text-[10px] font-bold uppercase text-slate-700 dark:text-slate-400 block">Speed</span>
+            <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">
+              {tokensPerSec} <span className="text-[10px] font-normal text-slate-700 dark:text-slate-400">t/s</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Team Collaboration Status & Turn Pill */}
+        <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/50 text-xs">
+          <div className="flex items-center gap-1.5">
+            <Activity className="h-3.5 w-3.5 text-indigo-500" />
+            <span className="font-bold text-slate-700 dark:text-slate-300">Team Dynamics:</span>
+            <span className={`rounded-md px-1.5 py-0.2 text-[10px] font-bold border ${teamBadge.bg} ${teamBadge.color} ${teamBadge.border}`}>
               {teamBadge.shortLabel}
             </span>
           </div>
-          <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
-            {teamBadge.description}
-          </p>
 
-          {/* Turn Mode status bar */}
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-700 dark:text-slate-400 font-medium">
-            <span>
-              {isUncapped ? (
-                <span className="text-indigo-700 dark:text-indigo-300 font-semibold flex items-center gap-1">
-                  <Flame className="h-3 w-3 text-amber-500" />
-                  Uncapped Mode • Turn {turnCount}
-                </span>
-              ) : (
-                <span>
-                  Turn Limit: {turnCount} / {maxTurns}
-                </span>
-              )}
-            </span>
-
-            {isRunning && turnCount >= 6 && onAbortInfiniteBurn && (
-              <button
-                onClick={onAbortInfiniteBurn}
-                className="flex items-center gap-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800 hover:bg-rose-100 cursor-pointer transition-all"
-                title="Mark this team as non-functional due to infinite token burn"
-              >
-                <Ban className="h-3 w-3" />
-                <span>Flag Non-Functional / Abort</span>
-              </button>
-            )}
+          <div className="text-[11px] font-mono text-slate-700 dark:text-slate-400 font-semibold">
+            {isUncapped ? `Turn ${turnCount}` : `${turnCount}/${maxTurns} Turns`}
           </div>
         </div>
+
+        {/* Abort infinite loop button if in runaway loop */}
+        {isRunning && turnCount >= 6 && onAbortInfiniteBurn && (
+          <button
+            onClick={onAbortInfiniteBurn}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300 cursor-pointer transition-colors"
+          >
+            <Ban className="h-3.5 w-3.5" />
+            <span>Flag Infinite Loop & Abort</span>
+          </button>
+        )}
       </div>
 
-      {/* 2. Grid of Core Cost & Compute Telemetries */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Inference Cost ($ USD) Card */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-400">
-            <DollarSign className="h-4 w-4 text-emerald-500" />
-            <span>Inference Cost</span>
-          </div>
-          <div className="mt-1.5 text-2xl font-bold tracking-tight text-slate-900 dark:text-white font-mono">
-            {formatCurrency(metrics.totalCostUsd)}
-          </div>
-          <div className="mt-1 text-[11px] text-slate-700 dark:text-slate-400 space-y-0.5">
-            <div className="flex justify-between">
-              <span>Cost / Turn:</span>
-              <span className="font-mono">{formatCurrency(metrics.costPerTurnUsd)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Burn Velocity:</span>
-              <span className="font-mono text-amber-600 dark:text-amber-400">${burnRatePerMin.toFixed(4)}/min</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Time to Consensus / Wall-Clock Time Card */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-400">
-            <Clock className="h-4 w-4 text-amber-500" />
-            <span>Time to Consensus</span>
-          </div>
-          <div className="mt-1.5 text-2xl font-bold tracking-tight text-slate-900 dark:text-white font-mono">
-            {wallClockSec}s
-          </div>
-          <div className="mt-1 text-[11px] text-slate-700 dark:text-slate-400 space-y-0.5">
-            <div className="flex justify-between">
-              <span>Throughput:</span>
-              <span className="font-mono">{tokensPerSec} tok/s</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Avg Latency/Turn:</span>
-              <span className="font-mono">
-                {turnCount > 0 ? formatTime(Math.round(metrics.totalWallClockMs / turnCount)) : '--'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Token Breakdown Card */}
+      {/* 2. Token & Cost Distribution Between Agents */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-            <Cpu className="h-4 w-4 text-blue-500" />
-            <span>Total Compute Consumed</span>
-          </div>
-          <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">
-            {formatNumber(metrics.totalTokens)} <span className="text-xs font-normal text-slate-700 dark:text-slate-400">tokens</span>
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 text-xs pt-1 text-slate-700 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 font-mono">
-          <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg">
-            <span className="text-[10px] uppercase block text-slate-700 dark:text-slate-400">Prompt In:</span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">{formatNumber(metrics.totalInputTokens)} tok</span>
-          </div>
-          <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg">
-            <span className="text-[10px] uppercase block text-slate-700 dark:text-slate-400">Reasoning Out:</span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">{formatNumber(metrics.totalOutputTokens)} tok</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 4. Multi-Agent Compute Distribution (Alpha vs Beta) */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400 mb-3 flex items-center justify-between">
-          <span>Agent Cost & Token Balance</span>
-          <TrendingUp className="h-3.5 w-3.5 text-indigo-500" />
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400 mb-2.5">
+          Agent Compute Share
         </h4>
 
-        {/* Agent A vs Agent B bar */}
-        <div className="space-y-3 text-xs">
+        <div className="space-y-2.5 text-xs">
           {/* Agent Alpha */}
           <div>
-            <div className="flex justify-between text-slate-700 dark:text-slate-300 font-semibold mb-1">
-              <span className="text-indigo-600 dark:text-indigo-400">Agent Alpha</span>
-              <span className="font-mono">
+            <div className="flex justify-between font-semibold mb-1">
+              <span className="text-indigo-600 dark:text-indigo-400">Agent Alpha (01)</span>
+              <span className="font-mono text-slate-700 dark:text-slate-300 text-[11px]">
                 {metrics.agentATokens} tok • {formatCurrency(metrics.agentACostUsd)}
               </span>
             </div>
@@ -251,9 +179,9 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
 
           {/* Agent Beta */}
           <div>
-            <div className="flex justify-between text-slate-700 dark:text-slate-300 font-semibold mb-1">
-              <span className="text-emerald-600 dark:text-emerald-400">Agent Beta</span>
-              <span className="font-mono">
+            <div className="flex justify-between font-semibold mb-1">
+              <span className="text-emerald-600 dark:text-emerald-400">Agent Beta (02)</span>
+              <span className="font-mono text-slate-700 dark:text-slate-300 text-[11px]">
                 {metrics.agentBTokens} tok • {formatCurrency(metrics.agentBCostUsd)}
               </span>
             </div>
@@ -273,52 +201,27 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
         </div>
       </div>
 
-      {/* 5. Verification & Ground Truth Status Card */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-            <Target className="h-4 w-4 text-purple-500" />
-            <span>Ground Truth Verifier</span>
+      {/* 3. Verifier Result Pill (compact) */}
+      {verification && (
+        <div
+          className={`rounded-2xl border p-3.5 text-xs ${
+            verification.isCorrect
+              ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200'
+              : 'border-rose-200 bg-rose-50/70 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200'
+          }`}
+        >
+          <div className="flex items-center justify-between font-bold">
+            <span className="flex items-center gap-1.5">
+              <Target className="h-4 w-4" />
+              <span>{verification.isCorrect ? 'Ground Truth Verified' : 'Consensus Failed Verification'}</span>
+            </span>
+            <span className="font-mono">{verification.accuracyScore}%</span>
           </div>
-
-          {verification ? (
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                verification.isCorrect
-                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-              }`}
-            >
-              {verification.isCorrect ? '100% Correct' : 'Failed Verification'}
-            </span>
-          ) : (
-            <span className="text-[11px] text-slate-700 dark:text-slate-400">
-              Awaiting final consensus
-            </span>
-          )}
+          <div className="mt-1 text-[11px] font-mono opacity-90">
+            Canonical: [{verification.canonicalAnswer}] • Result: [{verification.evaluatedAnswer}]
+          </div>
         </div>
-
-        {verification ? (
-          <div className="mt-2 space-y-2 text-xs">
-            <div className="rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/60 font-mono text-[11px] text-slate-700 dark:text-slate-300">
-              <div className="text-slate-700 dark:text-slate-400 text-[10px] uppercase font-bold">
-                Agreed Answer:
-              </div>
-              <div className="font-bold text-slate-900 dark:text-white mt-0.5">
-                {verification.evaluatedAnswer}
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-              {verification.verificationNotes}
-            </p>
-          </div>
-        ) : (
-          <p className="text-xs text-slate-700 dark:text-slate-400 leading-relaxed">
-            The domain verifier validates the joint solution deterministically against canonical logic proofs once consensus tags are received.
-          </p>
-        )}
-      </div>
+      )}
     </div>
   );
 };
-

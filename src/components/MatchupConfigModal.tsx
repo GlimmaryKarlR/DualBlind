@@ -145,9 +145,11 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                   onChange={(e) => setAgentA({ ...agentA, model: e.target.value })}
                   className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
-                  <option value="gemini-3.7-flash">Gemini 3.7 Flash (Default)</option>
-                  <option value="gemini-flash-latest">Gemini Flash Latest</option>
-                  <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+                  <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash</option>
+                  <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash</option>
+                  <option value="gemini-flash-latest">Google • Gemini Flash Latest</option>
+                  <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
+                  <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro</option>
                 </select>
               </div>
             </div>
@@ -198,9 +200,11 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                   onChange={(e) => setAgentB({ ...agentB, model: e.target.value })}
                   className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
-                  <option value="gemini-3.7-flash">Gemini 3.7 Flash (Default)</option>
-                  <option value="gemini-flash-latest">Gemini Flash Latest</option>
-                  <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+                  <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash</option>
+                  <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash</option>
+                  <option value="gemini-flash-latest">Google • Gemini Flash Latest</option>
+                  <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
+                  <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro</option>
                 </select>
               </div>
             </div>

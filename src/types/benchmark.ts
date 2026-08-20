@@ -38,6 +38,7 @@ export type TeamFunctionalityRating =
 export interface AgentConfig {
   id: 'agent_a' | 'agent_b';
   name: string;
+  brand?: string;
   model: string;
   temperature: number;
   thinkingLevel?: 'HIGH' | 'LOW' | 'MINIMAL';
@@ -61,6 +62,7 @@ export interface ChatTurn {
   costUsd: number;
   tokensPerSec: number;
   isConsensusClaim: boolean;
+  modelUsed?: string;
   thoughtProcess?: string;
 }
 
