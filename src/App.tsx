@@ -23,6 +23,7 @@ import { LeaderboardView } from './components/LeaderboardView';
 import { ProblemSuiteView } from './components/ProblemSuiteView';
 import { MatchupConfigModal } from './components/MatchupConfigModal';
 import { MethodologyModal } from './components/MethodologyModal';
+import { ExternalAgentInputCard } from './components/ExternalAgentInputCard';
 import { fireSuccessConfetti, calculateTokenCost } from './utils/formatters';
 
 export default function App() {
@@ -39,6 +40,8 @@ export default function App() {
     id: 'agent_a',
     name: 'Agent Alpha',
     model: 'gemini-3.7-flash',
+    provider: 'google',
+    isManualExternal: false,
     temperature: 0.3,
     avatarColor: 'indigo',
     systemPromptModifier: 'Specializes in analytical rigor, step-by-step constraint checking, and proof validation.',
@@ -48,6 +51,8 @@ export default function App() {
     id: 'agent_b',
     name: 'Agent Beta',
     model: 'gemini-3.7-flash',
+    provider: 'google',
+    isManualExternal: false,
     temperature: 0.4,
     avatarColor: 'emerald',
     systemPromptModifier: 'Specializes in lateral exploration, mathematical counter-examples, and strategic game theory.',
@@ -59,6 +64,10 @@ export default function App() {
   // Active Arena Execution State
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [activeAgentTurn, setActiveAgentTurn] = useState<'agent_a' | 'agent_b' | null>(null);
+  const [waitingForManualProxy, setWaitingForManualProxy] = useState<{
+    currentAgent: AgentConfig;
+    partnerAgent: AgentConfig;
+  } | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [consensusStatus, setConsensusStatus] = useState<ConsensusStatus>('idle');
@@ -100,21 +109,25 @@ export default function App() {
   // Modals
   const [isResultModalOpen, setIsResultModalOpen] = useState<boolean>(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState<boolean>(false);
-  const [isMethodologyModalOpen, setIsMethodologyModalOpen] = useState<boolean>(false);
 
-  // Ref to track if auto-run loop is active
+  // Refs
   const isRunningRef = useRef(isRunning);
   isRunningRef.current = isRunning;
   const isPausedRef = useRef(isPaused);
   isPausedRef.current = isPaused;
 
-  // Load past runs from server on mount
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
+  const metricsRef = useRef(metrics);
+  metricsRef.current = metrics;
+
+  // Load Leaderboard Runs from API
   useEffect(() => {
-    fetch('/api/benchmark/leaderboard')
+    fetch('/api/leaderboard/runs')
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.runs) && data.runs.length > 0) {
-          setRunsHistory(data.runs);
+        if (Array.isArray(data)) {
+          setRunsHistory(data);
         }
       })
       .catch((err) => console.log('Notice: in-memory run store initialized', err));
@@ -125,6 +138,7 @@ export default function App() {
     setIsRunning(false);
     setIsPaused(false);
     setActiveAgentTurn(null);
+    setWaitingForManualProxy(null);
     setTurnError(null);
     setTurns([]);
     setConsensusStatus('idle');
@@ -180,7 +194,122 @@ export default function App() {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[$\\,\\.\\[\\]\\(\\)\\*\\_\\"\\']/g, '').trim();
 
-  // Execute a single turn
+  // Extract final answer from content
+  const extractAnswerFromText = (text: string): string | null => {
+    const finalAnswerRegex = /(?:FINAL ANSWER|ANSWER|CONSENSUS):\s*\[?([^\]\n\r]+)\]?/i;
+    const match = text.match(finalAnswerRegex);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+    return null;
+  };
+
+  // Helper to evaluate consensus state
+  const evaluateConsensus = (turnList: ChatTurn[]) => {
+    const claims = turnList.filter((t) => t.extractedFinalAnswer !== null);
+    const agentAClaims = claims.filter((t) => t.agentId === 'agent_a');
+    const agentBClaims = claims.filter((t) => t.agentId === 'agent_b');
+
+    let reachedConsensus = false;
+    let agreedAns: string | null = null;
+    let hitCap = false;
+
+    if (agentAClaims.length > 0 && agentBClaims.length > 0) {
+      const latestA = agentAClaims[agentAClaims.length - 1].extractedFinalAnswer!;
+      const latestB = agentBClaims[agentBClaims.length - 1].extractedFinalAnswer!;
+
+      if (normalize(latestA) === normalize(latestB) || latestA.includes(latestB) || latestB.includes(latestA)) {
+        reachedConsensus = true;
+        agreedAns = latestA;
+        setConsensusStatus('consensus_reached');
+        setFinalAgreedAnswer(latestA);
+      } else {
+        setConsensusStatus('consensus_conflict');
+      }
+    } else if (agentAClaims.length > 0 || agentBClaims.length > 0) {
+      setConsensusStatus('single_claim');
+    } else {
+      setConsensusStatus('in_progress');
+    }
+
+    if (!isUncapped && turnList.length >= maxTurns && !reachedConsensus) {
+      hitCap = true;
+      setConsensusStatus('turn_cap_exhausted');
+    }
+
+    return { reachedConsensus, agreedAns, hitCap };
+  };
+
+  // Finalize & Verify Benchmark Run
+  const finalizeBenchmarkRun = useCallback(
+    async (
+      finalTurns: ChatTurn[],
+      finalMetrics: BenchmarkMetrics,
+      consensusReached: boolean,
+      finalAnswer: string | null,
+      abortedAsNonFunctional: boolean = false
+    ) => {
+      setIsRunning(false);
+      setActiveAgentTurn(null);
+      setWaitingForManualProxy(null);
+
+      try {
+        const verifyRes = await fetch('/api/benchmark/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            problem: currentProblem,
+            finalAnswerA: finalAnswer || finalTurns[finalTurns.length - 1]?.extractedFinalAnswer,
+            finalAnswerB: finalAnswer,
+            totalTokens: finalMetrics.totalTokens,
+            totalWallClockMs: finalMetrics.totalWallClockMs,
+            totalCostUsd: finalMetrics.totalCostUsd,
+            consensusReached: abortedAsNonFunctional ? false : consensusReached,
+            isUncapped,
+            abortedAsNonFunctional,
+          }),
+        });
+
+        const verifyData = await verifyRes.json();
+
+        const completedMetrics: BenchmarkMetrics = {
+          ...finalMetrics,
+          efficiencyIndex: verifyData.efficiencyIndex || 0,
+          accuracyScore: verifyData.accuracyScore || 0,
+          isCorrect: verifyData.isCorrect || false,
+          consensusReached: abortedAsNonFunctional ? false : consensusReached,
+          consensusTurn: consensusReached ? finalTurns.length : null,
+          teamFunctionality: verifyData.teamFunctionality || (abortedAsNonFunctional ? 'non_functional_loop' : 'divergent_gridlock'),
+          isUncapped,
+        };
+
+        const completedVerification: VerificationResult = {
+          isCorrect: verifyData.isCorrect,
+          accuracyScore: verifyData.accuracyScore,
+          evaluatedAnswer: verifyData.evaluatedAnswer || finalAnswer || 'None',
+          canonicalAnswer: verifyData.canonicalAnswer || currentProblem.canonicalAnswer,
+          explanation: verifyData.explanation || currentProblem.explanation,
+          verificationNotes: verifyData.verificationNotes || '',
+        };
+
+        setMetrics(completedMetrics);
+        setVerification(completedVerification);
+        if (abortedAsNonFunctional) {
+          setConsensusStatus('infinite_loop_abort');
+        }
+        setIsResultModalOpen(true);
+
+        if (verifyData.isCorrect && consensusReached && !abortedAsNonFunctional) {
+          fireSuccessConfetti();
+        }
+      } catch (e) {
+        console.error('Verification error:', e);
+      }
+    },
+    [currentProblem, isUncapped]
+  );
+
+  // Execute a single turn (handles automated API or triggers manual proxy)
   const executeSingleTurn = useCallback(
     async (
       currentTurnList: ChatTurn[],
@@ -191,6 +320,7 @@ export default function App() {
       reachedConsensus: boolean;
       agreedAns: string | null;
       hitCap: boolean;
+      requiresManualInput?: boolean;
     }> => {
       const turnNumber = currentTurnList.length + 1;
       const isAgentATurn = currentTurnList.length % 2 === 0;
@@ -198,6 +328,22 @@ export default function App() {
       const partnerAgent = isAgentATurn ? agentB : agentA;
 
       setActiveAgentTurn(isAgentATurn ? 'agent_a' : 'agent_b');
+
+      // If this agent is in Manual / External mode, open proxy input
+      if (currentAgent.isManualExternal) {
+        setWaitingForManualProxy({
+          currentAgent,
+          partnerAgent,
+        });
+        return {
+          newTurns: currentTurnList,
+          newMetrics: currentMetrics,
+          reachedConsensus: false,
+          agreedAns: null,
+          hitCap: false,
+          requiresManualInput: true,
+        };
+      }
 
       // Map history for the prompt
       const history = currentTurnList.map((t) => ({
@@ -234,7 +380,7 @@ export default function App() {
         const totalTokens = data.totalTokens || 120;
         const inputTokens = data.inputTokens || 80;
         const outputTokens = data.outputTokens || 40;
-        const costUsd = data.costUsd !== undefined ? data.costUsd : calculateTokenCost(inputTokens, outputTokens);
+        const costUsd = data.costUsd !== undefined ? data.costUsd : calculateTokenCost(inputTokens, outputTokens, currentAgent.model);
         const tokensPerSec = latencyMs > 0 ? Math.round((outputTokens / (latencyMs / 1000)) * 10) / 10 : 30;
 
         const newTurn: ChatTurn = {
@@ -309,38 +455,7 @@ export default function App() {
           isUncapped,
         };
 
-        // Check for Consensus Signal:
-        const claims = updatedTurns.filter((t) => t.extractedFinalAnswer !== null);
-        const agentAClaims = claims.filter((t) => t.agentId === 'agent_a');
-        const agentBClaims = claims.filter((t) => t.agentId === 'agent_b');
-
-        let reachedConsensus = false;
-        let agreedAns: string | null = null;
-        let hitCap = false;
-
-        if (agentAClaims.length > 0 && agentBClaims.length > 0) {
-          const latestA = agentAClaims[agentAClaims.length - 1].extractedFinalAnswer!;
-          const latestB = agentBClaims[agentBClaims.length - 1].extractedFinalAnswer!;
-
-          if (normalize(latestA) === normalize(latestB) || latestA.includes(latestB) || latestB.includes(latestA)) {
-            reachedConsensus = true;
-            agreedAns = latestA;
-            setConsensusStatus('consensus_reached');
-            setFinalAgreedAnswer(latestA);
-          } else {
-            setConsensusStatus('consensus_conflict');
-          }
-        } else if (agentAClaims.length > 0 || agentBClaims.length > 0) {
-          setConsensusStatus('single_claim');
-        } else {
-          setConsensusStatus('in_progress');
-        }
-
-        // Cap check only in capped mode
-        if (!isUncapped && updatedTurns.length >= maxTurns && !reachedConsensus) {
-          hitCap = true;
-          setConsensusStatus('turn_cap_exhausted');
-        }
+        const { reachedConsensus, agreedAns, hitCap } = evaluateConsensus(updatedTurns);
 
         setTurns(updatedTurns);
         setMetrics(nextMetrics);
@@ -364,73 +479,173 @@ export default function App() {
     [agentA, agentB, currentProblem, maxTurns, isUncapped]
   );
 
-  // Finalize & Verify Benchmark Run
-  const finalizeBenchmarkRun = useCallback(
+  // Submit response for manual external proxy turn
+  const handleManualTurnSubmit = useCallback(
     async (
-      finalTurns: ChatTurn[],
-      finalMetrics: BenchmarkMetrics,
-      consensusReached: boolean,
-      finalAnswer: string | null,
-      abortedAsNonFunctional: boolean = false
+      content: string,
+      latencyMs: number,
+      inputTokens: number,
+      outputTokens: number,
+      costUsd: number
     ) => {
-      setIsRunning(false);
+      const currentTurnList = turnsRef.current;
+      const currentMetrics = metricsRef.current;
+
+      const turnNumber = currentTurnList.length + 1;
+      const isAgentATurn = currentTurnList.length % 2 === 0;
+      const currentAgent = isAgentATurn ? agentA : agentB;
+      const agentTurnCount = Math.floor(currentTurnList.length / 2) + 1;
+
+      const extractedFinalAnswer = extractAnswerFromText(content);
+      const totalTokens = inputTokens + outputTokens;
+      const tokensPerSec =
+        latencyMs > 0 ? Math.round((outputTokens / (latencyMs / 1000)) * 10) / 10 : 25;
+
+      const newTurn: ChatTurn = {
+        id: `turn-manual-${turnNumber}-${Date.now()}`,
+        agentId: currentAgent.id,
+        agentName: currentAgent.name,
+        turnNumber,
+        agentTurnNumber: agentTurnCount,
+        timestamp: Date.now(),
+        content,
+        extractedFinalAnswer,
+        latencyMs,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        costUsd,
+        tokensPerSec,
+        isConsensusClaim: !!extractedFinalAnswer,
+        isManualEntry: true,
+        modelUsed: `${currentAgent.customBrand || currentAgent.brand || 'External'} ${
+          currentAgent.customModel || currentAgent.model
+        }`,
+      };
+
+      const updatedTurns = [...currentTurnList, newTurn];
+
+      // Update telemetry metrics
+      const updatedTotalWallClockMs = currentMetrics.totalWallClockMs + latencyMs;
+      const updatedTotalTokens = currentMetrics.totalTokens + totalTokens;
+      const updatedTotalInputTokens = currentMetrics.totalInputTokens + inputTokens;
+      const updatedTotalOutputTokens = currentMetrics.totalOutputTokens + outputTokens;
+      const updatedTotalCostUsd = (currentMetrics.totalCostUsd || 0) + costUsd;
+
+      const overallTokensPerSec =
+        updatedTotalWallClockMs > 0
+          ? Math.round((updatedTotalOutputTokens / (updatedTotalWallClockMs / 1000)) * 10) / 10
+          : 0;
+
+      const updatedAgentATokens = isAgentATurn
+        ? currentMetrics.agentATokens + totalTokens
+        : currentMetrics.agentATokens;
+      const updatedAgentBTokens = !isAgentATurn
+        ? currentMetrics.agentBTokens + totalTokens
+        : currentMetrics.agentBTokens;
+
+      const updatedAgentACost = isAgentATurn
+        ? (currentMetrics.agentACostUsd || 0) + costUsd
+        : currentMetrics.agentACostUsd || 0;
+      const updatedAgentBCost = !isAgentATurn
+        ? (currentMetrics.agentBCostUsd || 0) + costUsd
+        : currentMetrics.agentBCostUsd || 0;
+
+      const updatedAgentALatency = isAgentATurn
+        ? currentMetrics.agentALatencyMs + latencyMs
+        : currentMetrics.agentALatencyMs;
+      const updatedAgentBLatency = !isAgentATurn
+        ? currentMetrics.agentBLatencyMs + latencyMs
+        : currentMetrics.agentBLatencyMs;
+
+      const nextMetrics: BenchmarkMetrics = {
+        ...currentMetrics,
+        totalWallClockMs: updatedTotalWallClockMs,
+        totalTokens: updatedTotalTokens,
+        totalInputTokens: updatedTotalInputTokens,
+        totalOutputTokens: updatedTotalOutputTokens,
+        totalCostUsd: updatedTotalCostUsd,
+        agentACostUsd: updatedAgentACost,
+        agentBCostUsd: updatedAgentBCost,
+        tokensPerSec: overallTokensPerSec,
+        agentATokens: updatedAgentATokens,
+        agentBTokens: updatedAgentBTokens,
+        agentALatencyMs: updatedAgentALatency,
+        agentBLatencyMs: updatedAgentBLatency,
+        turnsCount: updatedTurns.length,
+        isUncapped,
+      };
+
+      const { reachedConsensus, agreedAns, hitCap } = evaluateConsensus(updatedTurns);
+
+      setTurns(updatedTurns);
+      setMetrics(nextMetrics);
+      setWaitingForManualProxy(null);
       setActiveAgentTurn(null);
 
-      try {
-        const verifyRes = await fetch('/api/benchmark/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            problem: currentProblem,
-            finalAnswerA: finalAnswer || finalTurns[finalTurns.length - 1]?.extractedFinalAnswer,
-            finalAnswerB: finalAnswer,
-            totalTokens: finalMetrics.totalTokens,
-            totalWallClockMs: finalMetrics.totalWallClockMs,
-            totalCostUsd: finalMetrics.totalCostUsd,
-            consensusReached: abortedAsNonFunctional ? false : consensusReached,
-            isUncapped,
-            abortedAsNonFunctional,
-          }),
-        });
-
-        const verifyData = await verifyRes.json();
-
-        const completedMetrics: BenchmarkMetrics = {
-          ...finalMetrics,
-          efficiencyIndex: verifyData.efficiencyIndex || 0,
-          accuracyScore: verifyData.accuracyScore || 0,
-          isCorrect: verifyData.isCorrect || false,
-          consensusReached: abortedAsNonFunctional ? false : consensusReached,
-          consensusTurn: consensusReached ? finalTurns.length : null,
-          teamFunctionality: verifyData.teamFunctionality || (abortedAsNonFunctional ? 'non_functional_loop' : 'divergent_gridlock'),
-          isUncapped,
-        };
-
-        const completedVerification: VerificationResult = {
-          isCorrect: verifyData.isCorrect,
-          accuracyScore: verifyData.accuracyScore,
-          evaluatedAnswer: verifyData.evaluatedAnswer || finalAnswer || 'None',
-          canonicalAnswer: verifyData.canonicalAnswer || currentProblem.canonicalAnswer,
-          explanation: verifyData.explanation || currentProblem.explanation,
-          verificationNotes: verifyData.verificationNotes || '',
-        };
-
-        setMetrics(completedMetrics);
-        setVerification(completedVerification);
-        if (abortedAsNonFunctional) {
-          setConsensusStatus('infinite_loop_abort');
-        }
-        setIsResultModalOpen(true);
-
-        if (verifyData.isCorrect && consensusReached && !abortedAsNonFunctional) {
-          fireSuccessConfetti();
-        }
-      } catch (e) {
-        console.error('Verification error:', e);
+      if (reachedConsensus || hitCap) {
+        await finalizeBenchmarkRun(updatedTurns, nextMetrics, reachedConsensus, agreedAns);
+      } else if (isRunningRef.current && !isPausedRef.current) {
+        setTimeout(async () => {
+          try {
+            const nextRes = await executeSingleTurn(updatedTurns, nextMetrics);
+            if (nextRes.reachedConsensus || nextRes.hitCap) {
+              await finalizeBenchmarkRun(
+                nextRes.newTurns,
+                nextRes.newMetrics,
+                nextRes.reachedConsensus,
+                nextRes.agreedAns
+              );
+            }
+          } catch (e) {
+            console.error('Failed executing following turn:', e);
+          }
+        }, 600);
       }
     },
-    [currentProblem, isUncapped]
+    [agentA, agentB, isUncapped, finalizeBenchmarkRun, executeSingleTurn]
   );
+
+  // Fallback single turn to automated Gemini inference
+  const handleFallbackManualToAutomated = useCallback(async () => {
+    setWaitingForManualProxy(null);
+    try {
+      const isAgentATurn = turns.length % 2 === 0;
+      const currentAgent = isAgentATurn ? agentA : agentB;
+      const partnerAgent = isAgentATurn ? agentB : agentA;
+
+      const history = turns.map((t) => ({
+        sender: t.agentName,
+        text: t.content,
+        isCurrentAgent: t.agentId === currentAgent.id,
+      }));
+
+      const response = await fetch('/api/benchmark/generate-turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problem: currentProblem,
+          agent: { ...currentAgent, model: 'gemini-3.7-flash', isManualExternal: false },
+          partnerName: partnerAgent.name,
+          history,
+          currentTurn: turns.length,
+          maxTurnsPerAgent: isUncapped ? 999 : Math.floor(maxTurns / 2),
+          isUncapped,
+        }),
+      });
+
+      const data = await response.json();
+      const latencyMs = data.latencyMs || 1000;
+      const totalTokens = data.totalTokens || 120;
+      const inputTokens = data.inputTokens || 80;
+      const outputTokens = data.outputTokens || 40;
+      const costUsd = data.costUsd !== undefined ? data.costUsd : calculateTokenCost(inputTokens, outputTokens);
+
+      await handleManualTurnSubmit(data.content, latencyMs, inputTokens, outputTokens, costUsd);
+    } catch (e) {
+      console.error('Manual fallback execution failed:', e);
+    }
+  }, [turns, agentA, agentB, currentProblem, isUncapped, maxTurns, handleManualTurnSubmit]);
 
   // Manual Flag / Abort for Infinite Token Burn Loop
   const handleFlagLoopAndAbort = useCallback(async () => {
@@ -478,7 +693,6 @@ export default function App() {
     }
 
     try {
-      // If uncapped, allow running until consensus is reached, paused, or safety backstop (40 turns)
       const safetyTurnLimit = isUncapped ? 40 : maxTurns;
 
       while (currentTurnList.length < safetyTurnLimit) {
@@ -487,6 +701,10 @@ export default function App() {
         }
 
         const result = await executeSingleTurn(currentTurnList, currentMetricsObj);
+        if (result.requiresManualInput) {
+          break;
+        }
+
         currentTurnList = result.newTurns;
         currentMetricsObj = result.newMetrics;
 
@@ -500,11 +718,9 @@ export default function App() {
           break;
         }
 
-        // Slight breathing pause between turns for UI realism
         await new Promise((r) => setTimeout(r, 600));
       }
 
-      // If reached safetyTurnLimit in uncapped mode without consensus, prompt evaluation
       if (isUncapped && currentTurnList.length >= safetyTurnLimit && consensusStatus !== 'consensus_reached') {
         await finalizeBenchmarkRun(
           currentTurnList,
@@ -533,6 +749,9 @@ export default function App() {
 
     try {
       const result = await executeSingleTurn(turns, metrics);
+      if (result.requiresManualInput) {
+        return;
+      }
       if (result.reachedConsensus || result.hitCap) {
         await finalizeBenchmarkRun(
           result.newTurns,
@@ -560,26 +779,39 @@ export default function App() {
       agentAConfig: agentA,
       agentBConfig: agentB,
       maxTurns,
-      maxTurnsPerAgent: isUncapped ? 999 : Math.floor(maxTurns / 2),
       isUncapped,
-      turns,
       consensusStatus,
       finalAgreedAnswer,
-      verification,
       metrics,
+      verification: verification || {
+        isCorrect: metrics.isCorrect,
+        accuracyScore: metrics.accuracyScore,
+        evaluatedAnswer: finalAgreedAnswer || 'None',
+        canonicalAnswer: currentProblem.canonicalAnswer,
+        explanation: currentProblem.explanation,
+        verificationNotes: '',
+      },
+      turns,
     };
 
-    setRunsHistory((prev) => [record, ...prev]);
-    setIsRunSaved(true);
-
     try {
-      await fetch('/api/benchmark/save-run', {
+      const res = await fetch('/api/leaderboard/save-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record),
       });
+
+      if (res.ok) {
+        setIsRunSaved(true);
+        const updatedList = await fetch('/api/leaderboard/runs').then((r) => r.json());
+        if (Array.isArray(updatedList)) {
+          setRunsHistory(updatedList);
+        }
+      }
     } catch (e) {
-      console.log('Saved to client state');
+      console.error('Failed saving benchmark run:', e);
+      setIsRunSaved(true);
+      setRunsHistory((prev) => [record, ...prev]);
     }
   };
 
@@ -688,6 +920,8 @@ export default function App() {
             <AgentModelTracker
               agentA={agentA}
               agentB={agentB}
+              onChangeAgentA={setAgentA}
+              onChangeAgentB={setAgentB}
               lastTurnAgentA={turns.slice().reverse().find((t) => t.agentId === 'agent_a') || null}
               lastTurnAgentB={turns.slice().reverse().find((t) => t.agentId === 'agent_b') || null}
               onOpenConfig={() => setIsConfigModalOpen(true)}
@@ -699,6 +933,20 @@ export default function App() {
               {/* Left Column: Problem Statement & Chat Transcript */}
               <div className="lg:col-span-7 space-y-4">
                 <ProblemCard problem={currentProblem} />
+
+                {/* External Agent Manual Proxy Card */}
+                {waitingForManualProxy && (
+                  <ExternalAgentInputCard
+                    currentAgent={waitingForManualProxy.currentAgent}
+                    partnerAgent={waitingForManualProxy.partnerAgent}
+                    problem={currentProblem}
+                    turns={turns}
+                    isUncapped={isUncapped}
+                    maxTurns={maxTurns}
+                    onSubmitTurn={handleManualTurnSubmit}
+                    onFallbackToAutomated={handleFallbackManualToAutomated}
+                  />
+                )}
 
                 <ChatTranscript
                   turns={turns}
@@ -805,6 +1053,7 @@ export default function App() {
           setAgentB(newB);
           setMaxTurns(newMaxTurns);
           setIsUncapped(newIsUncapped);
+          handleReset();
         }}
       />
     </div>

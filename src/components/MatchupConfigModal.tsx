@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AgentConfig } from '../types/benchmark';
-import { Sliders, Bot, X, Check, RefreshCw, Infinity, Flame } from 'lucide-react';
+import { MODEL_PRESETS, ModelPreset } from '../utils/modelTracker';
+import { Sliders, Bot, X, Check, RefreshCw, Infinity, ExternalLink, HelpCircle } from 'lucide-react';
 
 interface MatchupConfigModalProps {
   isOpen: boolean;
@@ -38,6 +39,8 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
       id: 'agent_a',
       name: 'Agent Alpha',
       model: 'gemini-3.7-flash',
+      provider: 'google',
+      isManualExternal: false,
       temperature: 0.3,
       avatarColor: 'indigo',
     });
@@ -45,6 +48,8 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
       id: 'agent_b',
       name: 'Agent Beta',
       model: 'gemini-3.7-flash',
+      provider: 'google',
+      isManualExternal: false,
       temperature: 0.4,
       avatarColor: 'emerald',
     });
@@ -52,9 +57,27 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
     setIsUncapped(true);
   };
 
+  const handleSelectPreset = (agentKey: 'agentA' | 'agentB', presetId: string) => {
+    const preset = MODEL_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+
+    const updater = agentKey === 'agentA' ? setAgentA : setAgentB;
+    const current = agentKey === 'agentA' ? agentA : agentB;
+
+    updater({
+      ...current,
+      model: preset.modelCode,
+      provider: preset.provider,
+      brand: preset.brand,
+      isManualExternal: preset.isExternal,
+      customBrand: preset.provider === 'custom' ? current.customBrand || 'Custom' : undefined,
+      customModel: preset.provider === 'custom' ? current.customModel || 'Custom LLM' : undefined,
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900 max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 rounded-full p-2 text-slate-700 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-slate-800 cursor-pointer"
@@ -68,10 +91,10 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
           </div>
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white">
-              Agent Matchup & Protocol Settings
+              Agent Matchup & Provider Settings
             </h2>
             <p className="text-xs text-slate-700 dark:text-slate-400">
-              Configure parameters, model aliases, and consensus convergence protocol.
+              Configure AI companies, model presets, or set up external copy/paste proxy workflows.
             </p>
           </div>
         </div>
@@ -86,10 +109,10 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                 </div>
                 <div>
                   <span className="font-bold text-slate-900 dark:text-white block">
-                    Uncapped Turn Protocol (No Hard Cap)
+                    Uncapped Turn Protocol (Natural Consensus)
                   </span>
                   <span className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Allows agents to naturally negotiate to consensus; measures real token cost to converge.
+                    Allows agents to naturally negotiate to consensus; measures real compute tokens and cost to converge.
                   </span>
                 </div>
               </div>
@@ -104,29 +127,27 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                 <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-amber-500"></div>
               </label>
             </div>
-
-            {isUncapped ? (
-              <div className="mt-3 text-[11px] text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-900/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/60">
-                ⚡ <strong>Uncapped Active:</strong> No artificial limit stops the agents. If the team enters an endless token-burning loop without converging, it will be scored as a <strong>Non-Functional Infinite Loop</strong> failure.
-              </div>
-            ) : (
-              <div className="mt-3 text-[11px] text-slate-600 dark:text-slate-400">
-                Capped mode enforced at <strong>{maxTurns} turns</strong> max.
-              </div>
-            )}
           </div>
 
           {/* Agent Alpha Config */}
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-            <div className="flex items-center gap-2 font-bold text-indigo-700 dark:text-indigo-300 mb-3">
-              <Bot className="h-4 w-4" />
-              <span>Agent Alpha Configuration</span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 font-bold text-indigo-700 dark:text-indigo-300">
+                <Bot className="h-4 w-4" />
+                <span>Agent Alpha (01) Configuration</span>
+              </div>
+
+              {agentA.isManualExternal && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
+                  External Copy/Paste Mode
+                </span>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Agent Name / Persona
+                  Agent Persona Name
                 </label>
                 <input
                   type="text"
@@ -138,50 +159,141 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
 
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Model Engine
+                  Company / AI Model Preset
                 </label>
                 <select
-                  value={agentA.model}
-                  onChange={(e) => setAgentA({ ...agentA, model: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  value={
+                    MODEL_PRESETS.find((p) => p.modelCode === agentA.model || p.id === agentA.model)?.id ||
+                    (agentA.isManualExternal ? 'custom-external' : 'gemini-3.7-flash')
+                  }
+                  onChange={(e) => handleSelectPreset('agentA', e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 font-semibold"
                 >
-                  <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash</option>
-                  <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash</option>
-                  <option value="gemini-flash-latest">Google • Gemini Flash Latest</option>
-                  <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
-                  <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro</option>
+                  <optgroup label="Google (Automated API)">
+                    <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash ($0.15 / $0.60)</option>
+                    <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash ($0.15 / $0.60)</option>
+                    <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro ($1.25 / $5.00)</option>
+                    <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite ($0.075 / $0.30)</option>
+                  </optgroup>
+                  <optgroup label="Moonshot AI (External / Kimi)">
+                    <option value="kimi-k1-5">Moonshot • Kimi k1.5 ($1.00 / $4.00)</option>
+                    <option value="kimi-chat-128k">Moonshot • Kimi Chat 128k ($0.80 / $3.20)</option>
+                  </optgroup>
+                  <optgroup label="DeepSeek (External Copy & Paste)">
+                    <option value="deepseek-r1">DeepSeek • DeepSeek R1 ($0.55 / $2.19)</option>
+                    <option value="deepseek-v3">DeepSeek • DeepSeek V3 ($0.14 / $0.28)</option>
+                    <option value="deepseek-coder-v2">DeepSeek • DeepSeek Coder V2 ($0.14 / $0.28)</option>
+                  </optgroup>
+                  <optgroup label="Alibaba (External / Qwen)">
+                    <option value="qwen-2-5-max">Alibaba • Qwen 2.5 Max ($1.60 / $6.40)</option>
+                    <option value="qwen-2-5-72b">Alibaba • Qwen 2.5 72B Instruct ($0.35 / $0.70)</option>
+                    <option value="qwen-2-5-coder">Alibaba • Qwen 2.5 Coder 32B ($0.20 / $0.40)</option>
+                  </optgroup>
+                  <optgroup label="xAI (External Copy & Paste / Grok)">
+                    <option value="grok-3">xAI • Grok 3 ($3.00 / $15.00)</option>
+                    <option value="grok-3-mini">xAI • Grok 3 Mini ($0.30 / $1.20)</option>
+                    <option value="grok-2">xAI • Grok 2 ($2.00 / $10.00)</option>
+                  </optgroup>
+                  <optgroup label="Mistral AI (External Copy & Paste)">
+                    <option value="mistral-large-2">Mistral AI • Mistral Large 2 ($2.00 / $6.00)</option>
+                    <option value="codestral">Mistral AI • Codestral 2501 ($0.30 / $0.90)</option>
+                  </optgroup>
+                  <optgroup label="Anthropic (External Copy & Paste)">
+                    <option value="claude-3-7-sonnet">Anthropic • Claude 3.7 Sonnet ($3.00 / $15.00)</option>
+                    <option value="claude-3-5-sonnet">Anthropic • Claude 3.5 Sonnet ($3.00 / $15.00)</option>
+                    <option value="claude-3-5-haiku">Anthropic • Claude 3.5 Haiku ($0.80 / $4.00)</option>
+                  </optgroup>
+                  <optgroup label="OpenAI (External Copy & Paste)">
+                    <option value="gpt-4o">OpenAI • GPT-4o ($2.50 / $10.00)</option>
+                    <option value="gpt-4o-mini">OpenAI • GPT-4o Mini ($0.15 / $0.60)</option>
+                    <option value="o3-mini">OpenAI • o3-mini ($1.10 / $4.40)</option>
+                  </optgroup>
+                  <optgroup label="Non-Traditional & Open Weights">
+                    <option value="yi-lightning">01.AI • Yi-Lightning ($0.14 / $0.14)</option>
+                    <option value="command-r-plus">Cohere • Command R+ ($2.50 / $10.00)</option>
+                    <option value="llama-3-3-70b">Meta • Llama 3.3 70B ($0.50 / $0.80)</option>
+                    <option value="custom-external">Custom / Other Model (User Defined)</option>
+                  </optgroup>
                 </select>
               </div>
             </div>
 
-            <div className="mt-3">
-              <div className="flex justify-between font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                <span>Sampling Temperature</span>
-                <span className="font-mono">{agentA.temperature}</span>
+            {/* Custom Brand / Model Fields if Custom is selected */}
+            {(agentA.provider === 'custom' || agentA.model === 'custom-external-model') && (
+              <div className="mt-3 grid grid-cols-2 gap-3 p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Custom Company/Brand Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Moonshot, Mistral, 01.AI"
+                    value={agentA.customBrand || ''}
+                    onChange={(e) => setAgentA({ ...agentA, customBrand: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Custom Model Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Kimi k1.5, Codestral"
+                    value={agentA.customModel || ''}
+                    onChange={(e) => setAgentA({ ...agentA, customModel: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
               </div>
-              <input
-                type="range"
-                min="0.0"
-                max="1.0"
-                step="0.05"
-                value={agentA.temperature}
-                onChange={(e) => setAgentA({ ...agentA, temperature: parseFloat(e.target.value) })}
-                className="w-full cursor-pointer accent-indigo-600"
-              />
+            )}
+
+            {/* Manual External Toggle */}
+            <div className="mt-3 flex items-center justify-between border-t border-indigo-100/80 pt-2.5 dark:border-indigo-900/40">
+              <div>
+                <span className="font-semibold text-slate-700 dark:text-slate-300 block">
+                  Workflow Mode
+                </span>
+                <span className="text-[11px] text-slate-700 dark:text-slate-400">
+                  {agentA.isManualExternal
+                    ? 'Copy prompt to Kimi/DeepSeek/Claude/etc. window & paste response'
+                    : 'Automated direct server-side API inference'}
+                </span>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agentA.isManualExternal || false}
+                  onChange={(e) =>
+                    setAgentA({ ...agentA, isManualExternal: e.target.checked })
+                  }
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+              </label>
             </div>
           </div>
 
           {/* Agent Beta Config */}
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50/30 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-            <div className="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300 mb-3">
-              <Bot className="h-4 w-4" />
-              <span>Agent Beta Configuration</span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300">
+                <Bot className="h-4 w-4" />
+                <span>Agent Beta (02) Configuration</span>
+              </div>
+
+              {agentB.isManualExternal && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
+                  External Copy/Paste Mode
+                </span>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Agent Name / Persona
+                  Agent Persona Name
                 </label>
                 <input
                   type="text"
@@ -193,36 +305,119 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
 
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Model Engine
+                  Company / AI Model Preset
                 </label>
                 <select
-                  value={agentB.model}
-                  onChange={(e) => setAgentB({ ...agentB, model: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  value={
+                    MODEL_PRESETS.find((p) => p.modelCode === agentB.model || p.id === agentB.model)?.id ||
+                    (agentB.isManualExternal ? 'custom-external' : 'gemini-3.7-flash')
+                  }
+                  onChange={(e) => handleSelectPreset('agentB', e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 font-semibold"
                 >
-                  <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash</option>
-                  <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash</option>
-                  <option value="gemini-flash-latest">Google • Gemini Flash Latest</option>
-                  <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
-                  <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro</option>
+                  <optgroup label="Google (Automated API)">
+                    <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash ($0.15 / $0.60)</option>
+                    <option value="gemini-2.5-flash">Google • Gemini 2.5 Flash ($0.15 / $0.60)</option>
+                    <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro ($1.25 / $5.00)</option>
+                    <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite ($0.075 / $0.30)</option>
+                  </optgroup>
+                  <optgroup label="Moonshot AI (External / Kimi)">
+                    <option value="kimi-k1-5">Moonshot • Kimi k1.5 ($1.00 / $4.00)</option>
+                    <option value="kimi-chat-128k">Moonshot • Kimi Chat 128k ($0.80 / $3.20)</option>
+                  </optgroup>
+                  <optgroup label="DeepSeek (External Copy & Paste)">
+                    <option value="deepseek-r1">DeepSeek • DeepSeek R1 ($0.55 / $2.19)</option>
+                    <option value="deepseek-v3">DeepSeek • DeepSeek V3 ($0.14 / $0.28)</option>
+                    <option value="deepseek-coder-v2">DeepSeek • DeepSeek Coder V2 ($0.14 / $0.28)</option>
+                  </optgroup>
+                  <optgroup label="Alibaba (External / Qwen)">
+                    <option value="qwen-2-5-max">Alibaba • Qwen 2.5 Max ($1.60 / $6.40)</option>
+                    <option value="qwen-2-5-72b">Alibaba • Qwen 2.5 72B Instruct ($0.35 / $0.70)</option>
+                    <option value="qwen-2-5-coder">Alibaba • Qwen 2.5 Coder 32B ($0.20 / $0.40)</option>
+                  </optgroup>
+                  <optgroup label="xAI (External Copy & Paste / Grok)">
+                    <option value="grok-3">xAI • Grok 3 ($3.00 / $15.00)</option>
+                    <option value="grok-3-mini">xAI • Grok 3 Mini ($0.30 / $1.20)</option>
+                    <option value="grok-2">xAI • Grok 2 ($2.00 / $10.00)</option>
+                  </optgroup>
+                  <optgroup label="Mistral AI (External Copy & Paste)">
+                    <option value="mistral-large-2">Mistral AI • Mistral Large 2 ($2.00 / $6.00)</option>
+                    <option value="codestral">Mistral AI • Codestral 2501 ($0.30 / $0.90)</option>
+                  </optgroup>
+                  <optgroup label="Anthropic (External Copy & Paste)">
+                    <option value="claude-3-7-sonnet">Anthropic • Claude 3.7 Sonnet ($3.00 / $15.00)</option>
+                    <option value="claude-3-5-sonnet">Anthropic • Claude 3.5 Sonnet ($3.00 / $15.00)</option>
+                    <option value="claude-3-5-haiku">Anthropic • Claude 3.5 Haiku ($0.80 / $4.00)</option>
+                  </optgroup>
+                  <optgroup label="OpenAI (External Copy & Paste)">
+                    <option value="gpt-4o">OpenAI • GPT-4o ($2.50 / $10.00)</option>
+                    <option value="gpt-4o-mini">OpenAI • GPT-4o Mini ($0.15 / $0.60)</option>
+                    <option value="o3-mini">OpenAI • o3-mini ($1.10 / $4.40)</option>
+                  </optgroup>
+                  <optgroup label="Non-Traditional & Open Weights">
+                    <option value="yi-lightning">01.AI • Yi-Lightning ($0.14 / $0.14)</option>
+                    <option value="command-r-plus">Cohere • Command R+ ($2.50 / $10.00)</option>
+                    <option value="llama-3-3-70b">Meta • Llama 3.3 70B ($0.50 / $0.80)</option>
+                    <option value="custom-external">Custom / Other Model (User Defined)</option>
+                  </optgroup>
                 </select>
               </div>
             </div>
 
-            <div className="mt-3">
-              <div className="flex justify-between font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                <span>Sampling Temperature</span>
-                <span className="font-mono">{agentB.temperature}</span>
+            {/* Custom Brand / Model Fields if Custom is selected */}
+            {(agentB.provider === 'custom' || agentB.model === 'custom-external-model') && (
+              <div className="mt-3 grid grid-cols-2 gap-3 p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Custom Company/Brand Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., xAI, Mistral, Ollama"
+                    value={agentB.customBrand || ''}
+                    onChange={(e) => setAgentB({ ...agentB, customBrand: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Custom Model Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Grok 3, Mistral Large"
+                    value={agentB.customModel || ''}
+                    onChange={(e) => setAgentB({ ...agentB, customModel: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
               </div>
-              <input
-                type="range"
-                min="0.0"
-                max="1.0"
-                step="0.05"
-                value={agentB.temperature}
-                onChange={(e) => setAgentB({ ...agentB, temperature: parseFloat(e.target.value) })}
-                className="w-full cursor-pointer accent-emerald-600"
-              />
+            )}
+
+            {/* Manual External Toggle */}
+            <div className="mt-3 flex items-center justify-between border-t border-emerald-100/80 pt-2.5 dark:border-emerald-900/40">
+              <div>
+                <span className="font-semibold text-slate-700 dark:text-slate-300 block">
+                  Workflow Mode
+                </span>
+                <span className="text-[11px] text-slate-700 dark:text-slate-400">
+                  {agentB.isManualExternal
+                    ? 'Copy prompt to Anthropic/OpenAI/etc. window & paste response'
+                    : 'Automated direct server-side API inference'}
+                </span>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agentB.isManualExternal || false}
+                  onChange={(e) =>
+                    setAgentB({ ...agentB, isManualExternal: e.target.checked })
+                  }
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+              </label>
             </div>
           </div>
 
@@ -278,4 +473,5 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
     </div>
   );
 };
+
 

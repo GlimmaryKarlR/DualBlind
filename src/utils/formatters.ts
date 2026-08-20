@@ -42,9 +42,90 @@ export function formatCurrency(usd: number): string {
  * Input: $0.15 per 1,000,000 tokens ($0.00000015 / token)
  * Output: $0.60 per 1,000,000 tokens ($0.00000060 / token)
  */
-export function calculateTokenCost(inputTokens: number, outputTokens: number, _model?: string): number {
-  const inputCost = (inputTokens * 0.15) / 1_000_000;
-  const outputCost = (outputTokens * 0.60) / 1_000_000;
+export function calculateTokenCost(
+  inputTokens: number,
+  outputTokens: number,
+  modelOrPrice?: string | { inPrice: number; outPrice: number }
+): number {
+  let inRate = 0.15;
+  let outRate = 0.60;
+
+  if (typeof modelOrPrice === 'object' && modelOrPrice !== null) {
+    inRate = modelOrPrice.inPrice;
+    outRate = modelOrPrice.outPrice;
+  } else if (typeof modelOrPrice === 'string') {
+    const m = modelOrPrice.toLowerCase();
+    if (m.includes('claude-3-7') || m.includes('claude-3.7') || m.includes('claude-3-5-sonnet')) {
+      inRate = 3.00;
+      outRate = 15.00;
+    } else if (m.includes('grok-3-mini')) {
+      inRate = 0.30;
+      outRate = 1.20;
+    } else if (m.includes('grok-3') || m.includes('grok 3')) {
+      inRate = 3.00;
+      outRate = 15.00;
+    } else if (m.includes('grok-2') || m.includes('grok') || m.includes('xai')) {
+      inRate = 2.00;
+      outRate = 10.00;
+    } else if (m.includes('claude-3-5-haiku')) {
+      inRate = 0.80;
+      outRate = 4.00;
+    } else if (m.includes('gpt-4o-mini')) {
+      inRate = 0.15;
+      outRate = 0.60;
+    } else if (m.includes('gpt-4o') || m.includes('openai')) {
+      inRate = 2.50;
+      outRate = 10.00;
+    } else if (m.includes('o3-mini')) {
+      inRate = 1.10;
+      outRate = 4.40;
+    } else if (m.includes('deepseek-r1')) {
+      inRate = 0.55;
+      outRate = 2.19;
+    } else if (m.includes('deepseek-v3') || m.includes('deepseek-coder')) {
+      inRate = 0.14;
+      outRate = 0.28;
+    } else if (m.includes('kimi-k1') || m.includes('kimi-k1-5')) {
+      inRate = 1.00;
+      outRate = 4.00;
+    } else if (m.includes('kimi') || m.includes('moonshot')) {
+      inRate = 0.80;
+      outRate = 3.20;
+    } else if (m.includes('qwen-2-5-max') || m.includes('qwen-max')) {
+      inRate = 1.60;
+      outRate = 6.40;
+    } else if (m.includes('qwen-2-5-coder') || m.includes('qwen-coder')) {
+      inRate = 0.20;
+      outRate = 0.40;
+    } else if (m.includes('qwen')) {
+      inRate = 0.35;
+      outRate = 0.70;
+    } else if (m.includes('mistral-large')) {
+      inRate = 2.00;
+      outRate = 6.00;
+    } else if (m.includes('codestral')) {
+      inRate = 0.30;
+      outRate = 0.90;
+    } else if (m.includes('mistral')) {
+      inRate = 0.50;
+      outRate = 1.50;
+    } else if (m.includes('yi-') || m.includes('01.ai')) {
+      inRate = 0.14;
+      outRate = 0.14;
+    } else if (m.includes('command-r') || m.includes('cohere')) {
+      inRate = 2.50;
+      outRate = 10.00;
+    } else if (m.includes('gemini-2.5-pro')) {
+      inRate = 1.25;
+      outRate = 5.00;
+    } else if (m.includes('gemini-3.1-flash-lite')) {
+      inRate = 0.075;
+      outRate = 0.30;
+    }
+  }
+
+  const inputCost = (inputTokens * inRate) / 1_000_000;
+  const outputCost = (outputTokens * outRate) / 1_000_000;
   return inputCost + outputCost;
 }
 
