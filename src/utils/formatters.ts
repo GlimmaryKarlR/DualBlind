@@ -133,12 +133,15 @@ export function calculateTokenCost(
     } else if (m.includes('command-r') || m.includes('cohere')) {
       inRate = 2.50;
       outRate = 10.00;
-    } else if (m.includes('gemini-2.5-pro')) {
+    } else if (m.includes('gemini-3.1-pro') || m.includes('3.1-pro')) {
       inRate = 1.25;
       outRate = 5.00;
-    } else if (m.includes('gemini-3.1-flash-lite')) {
+    } else if (m.includes('gemini-3.1-flash-lite') || m.includes('flash-lite')) {
       inRate = 0.075;
       outRate = 0.30;
+    } else if (m.includes('gemini-3.7-flash') || m.includes('3.7-flash') || m.includes('gemini-flash-latest') || m.includes('gemini')) {
+      inRate = 0.15;
+      outRate = 0.60;
     }
   }
 

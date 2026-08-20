@@ -336,8 +336,9 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                     >
                       <optgroup label="Google (Gemini Native & Automated)">
                         <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash ($0.15 / $0.60)</option>
-                        <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro ($1.25 / $5.00)</option>
+                        <option value="gemini-3.1-pro-preview">Google • Gemini 3.1 Pro Preview ($1.25 / $5.00)</option>
                         <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite ($0.075 / $0.30)</option>
+                        <option value="gemini-flash-latest">Google • Gemini Flash Latest ($0.15 / $0.60)</option>
                       </optgroup>
                       <optgroup label="Microsoft (External / Copilot / Azure)">
                         <option value="phi-4">Microsoft • Phi-4 14B ($0.10 / $0.40)</option>
@@ -472,8 +473,9 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                     >
                       <optgroup label="Google (Gemini Native & Automated)">
                         <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash ($0.15 / $0.60)</option>
-                        <option value="gemini-2.5-pro">Google • Gemini 2.5 Pro ($1.25 / $5.00)</option>
+                        <option value="gemini-3.1-pro-preview">Google • Gemini 3.1 Pro Preview ($1.25 / $5.00)</option>
                         <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite ($0.075 / $0.30)</option>
+                        <option value="gemini-flash-latest">Google • Gemini Flash Latest ($0.15 / $0.60)</option>
                       </optgroup>
                       <optgroup label="Microsoft (External / Copilot / Azure)">
                         <option value="phi-4">Microsoft • Phi-4 14B ($0.10 / $0.40)</option>

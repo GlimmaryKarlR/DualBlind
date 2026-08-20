@@ -336,9 +336,9 @@ async function callGeminiWithResilience(
   // Sequence of fallback models to ensure high availability
   const modelsToAttempt = [
     primaryModel || 'gemini-3.7-flash',
-    'gemini-2.5-flash',
     'gemini-flash-latest',
     'gemini-3.1-flash-lite',
+    'gemini-3.1-pro-preview',
   ].filter((v, i, a) => a.indexOf(v) === i); // Unique models
 
   let lastError: any = null;
