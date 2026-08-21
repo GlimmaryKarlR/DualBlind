@@ -5,6 +5,7 @@ import {
   getBrandGroups,
   findCatalogModel,
 } from '../utils/modelCatalog';
+import { resolveOpenRouterModel } from '../utils/clientInference';
 import {
   Search,
   ChevronDown,
@@ -448,13 +449,15 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                                   ))}
                                 </div>
 
-                                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-700 dark:text-slate-400">
+                                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-slate-700 dark:text-slate-400">
                                   <span className="font-mono">
                                     ${model.inputPricePerMillion.toFixed(2)} / $
                                     {model.outputPricePerMillion.toFixed(2)} per 1M
                                   </span>
                                   <span>•</span>
-                                  <span>{model.isExternal ? 'Open / External' : 'Direct API'}</span>
+                                  <span className="font-mono text-[9px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1 py-0.2 rounded">
+                                    {resolveOpenRouterModel(model.modelCode || model.id)}
+                                  </span>
                                 </div>
                               </div>
 
