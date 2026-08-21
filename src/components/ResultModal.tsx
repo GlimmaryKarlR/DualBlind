@@ -15,7 +15,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { BenchmarkProblem, BenchmarkMetrics, VerificationResult, AgentConfig } from '../types/benchmark';
-import { formatTime, formatNumber, formatCurrency, getTierBadge, getTeamFunctionalityBadge } from '../utils/formatters';
+import { formatTime, formatNumber, formatCurrency, getTierBadge, getTeamFunctionalityBadge, getAgentMakeAndModel } from '../utils/formatters';
 
 interface ResultModalProps {
   isOpen: boolean;
@@ -174,7 +174,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
         <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
           <div className="rounded-xl border border-indigo-100 bg-white p-3 dark:border-indigo-900/50 dark:bg-slate-800/80">
             <div className="font-bold text-indigo-600 dark:text-indigo-400 mb-1">
-              {agentA.name} ({agentA.model})
+              {getAgentMakeAndModel(agentA).fullDisplayName}
             </div>
             <div className="space-y-1 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
               <div>Tokens: {formatNumber(metrics.agentATokens)} tok</div>
@@ -185,7 +185,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
 
           <div className="rounded-xl border border-emerald-100 bg-white p-3 dark:border-emerald-900/50 dark:bg-slate-800/80">
             <div className="font-bold text-emerald-600 dark:text-emerald-400 mb-1">
-              {agentB.name} ({agentB.model})
+              {getAgentMakeAndModel(agentB).fullDisplayName}
             </div>
             <div className="space-y-1 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
               <div>Tokens: {formatNumber(metrics.agentBTokens)} tok</div>

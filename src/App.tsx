@@ -29,7 +29,7 @@ import { ProblemSuiteView } from './components/ProblemSuiteView';
 import { MatchupConfigModal } from './components/MatchupConfigModal';
 import { MethodologyModal } from './components/MethodologyModal';
 import { ExternalAgentInputCard } from './components/ExternalAgentInputCard';
-import { fireSuccessConfetti, calculateTokenCost } from './utils/formatters';
+import { fireSuccessConfetti, calculateTokenCost, getAgentMakeAndModel } from './utils/formatters';
 
 export default function App() {
   // Navigation & View state
@@ -815,6 +815,9 @@ export default function App() {
   const handleSaveToLeaderboard = async () => {
     if (isRunSaved) return;
 
+    const agentAInfo = getAgentMakeAndModel(agentA);
+    const agentBInfo = getAgentMakeAndModel(agentB);
+
     const record: BenchmarkRunRecord = {
       id: `run-${Date.now()}`,
       problemId: currentProblem.id,
@@ -822,8 +825,16 @@ export default function App() {
       topic: currentProblem.topic,
       difficulty: currentProblem.difficulty,
       date: new Date().toISOString(),
-      agentAConfig: agentA,
-      agentBConfig: agentB,
+      agentAConfig: {
+        ...agentA,
+        name: agentAInfo.fullDisplayName,
+        brand: agentAInfo.make,
+      },
+      agentBConfig: {
+        ...agentB,
+        name: agentBInfo.fullDisplayName,
+        brand: agentBInfo.make,
+      },
       maxTurns,
       isUncapped,
       consensusStatus,
