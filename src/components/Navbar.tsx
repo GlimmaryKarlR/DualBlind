@@ -1,11 +1,11 @@
 import React from 'react';
-import { Bot, Trophy, Layers, BookOpen, Shuffle, Sparkles, Activity, Key } from 'lucide-react';
+import { Bot, Trophy, Layers, BookOpen, Activity, Key } from 'lucide-react';
 import { TopicCategory } from '../types/benchmark';
 
 interface NavbarProps {
   currentTab: 'arena' | 'leaderboard' | 'problems' | 'methodology';
   onSelectTab: (tab: 'arena' | 'leaderboard' | 'problems' | 'methodology') => void;
-  onRandomChallenge: (topic?: TopicCategory) => void;
+  onRandomChallenge?: (topic?: TopicCategory) => void;
   isRunning: boolean;
   onOpenTokens?: () => void;
   configuredKeysCount?: number;
@@ -97,7 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </nav>
 
-        {/* Live Status & Quick Action Buttons */}
+        {/* Header Action Buttons */}
         <div className="flex items-center gap-2.5">
           {/* APIs and Tokens Button */}
           {onOpenTokens && (
@@ -118,25 +118,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
           )}
-
-          <div className="hidden sm:flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-            <span className={`h-2 w-2 rounded-full bg-emerald-500 ${isRunning ? 'animate-ping' : 'animate-pulse'}`} />
-            <span>{isRunning ? 'Benchmarking Active' : 'Arena Ready'}</span>
-          </div>
-
-          <div className="hidden sm:block h-6 w-px bg-slate-200 dark:bg-slate-700" />
-
-          <button
-            id="quick-random-btn"
-            disabled={isRunning}
-            onClick={() => onRandomChallenge()}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 active:scale-98 disabled:opacity-50 transition-all cursor-pointer"
-            title="Randomly pick 1 of 3 topics (Logic, Strategy, Abstract)"
-          >
-            <Shuffle className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Random 1 of 3</span>
-            <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-          </button>
         </div>
       </div>
 

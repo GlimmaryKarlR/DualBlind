@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AgentConfig, ProviderApiKeys } from '../types/benchmark';
 import { MODEL_PRESETS } from '../utils/modelTracker';
+import { CatalogModel } from '../utils/modelCatalog';
+import { ModelSelectorDropdown } from './ModelSelectorDropdown';
 import {
   PROVIDER_METAS,
   getStoredApiKeys,
@@ -167,6 +169,21 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
     });
   };
 
+  const handleSelectCatalogModel = (agentKey: 'agentA' | 'agentB', catalogModel: CatalogModel) => {
+    const updater = agentKey === 'agentA' ? setAgentA : setAgentB;
+    const current = agentKey === 'agentA' ? agentA : agentB;
+
+    updater({
+      ...current,
+      model: catalogModel.modelCode || catalogModel.id,
+      provider: catalogModel.provider,
+      brand: catalogModel.brand,
+      isManualExternal: catalogModel.isExternal,
+      customBrand: catalogModel.provider === 'custom' ? catalogModel.brand : undefined,
+      customModel: catalogModel.provider === 'custom' ? catalogModel.name : undefined,
+    });
+  };
+
   const configuredCount = countConfiguredKeys(apiKeys);
 
   const filteredProviders = PROVIDER_METAS.filter((p) => {
@@ -313,84 +330,15 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
 
                   <div>
                     <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Model Preset / AI Engine
+                      Model Catalog / AI Engine (400+ Models)
                     </label>
-                    <select
-                      value={agentA.model}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === 'custom-external') {
-                          setAgentA({
-                            ...agentA,
-                            model: 'custom-external-model',
-                            provider: 'custom',
-                            isManualExternal: true,
-                            customBrand: 'Custom',
-                            customModel: 'Custom Model',
-                          });
-                        } else {
-                          handleSelectPreset('agentA', val);
-                        }
-                      }}
-                      className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    >
-                      <optgroup label="Google (Gemini Native & Automated)">
-                        <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash ($0.15 / $0.60)</option>
-                        <option value="gemini-3.1-pro-preview">Google • Gemini 3.1 Pro Preview ($1.25 / $5.00)</option>
-                        <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite ($0.075 / $0.30)</option>
-                        <option value="gemini-flash-latest">Google • Gemini Flash Latest ($0.15 / $0.60)</option>
-                      </optgroup>
-                      <optgroup label="Microsoft (External / Copilot / Azure)">
-                        <option value="phi-4">Microsoft • Phi-4 14B ($0.10 / $0.40)</option>
-                        <option value="phi-3-5-moe">Microsoft • Phi-3.5 MoE ($0.15 / $0.60)</option>
-                        <option value="phi-3-5-mini">Microsoft • Phi-3.5 Mini ($0.05 / $0.15)</option>
-                      </optgroup>
-                      <optgroup label="Amazon (External / AWS Bedrock / Nova)">
-                        <option value="amazon-nova-pro">Amazon • Nova Pro ($0.80 / $3.20)</option>
-                        <option value="amazon-nova-lite">Amazon • Nova Lite ($0.06 / $0.24)</option>
-                        <option value="amazon-nova-micro">Amazon • Nova Micro ($0.035 / $0.14)</option>
-                      </optgroup>
-                      <optgroup label="Moonshot AI (External / Kimi)">
-                        <option value="kimi-k1-5">Moonshot • Kimi k1.5 ($1.00 / $4.00)</option>
-                        <option value="kimi-chat-128k">Moonshot • Kimi Chat 128k ($0.80 / $3.20)</option>
-                      </optgroup>
-                      <optgroup label="DeepSeek Suite (External / R1 & V3)">
-                        <option value="deepseek-r1">DeepSeek • R1 Reasoning ($0.55 / $2.19)</option>
-                        <option value="deepseek-v3">DeepSeek • V3 General ($0.14 / $0.28)</option>
-                        <option value="deepseek-coder-v2">DeepSeek • Coder V2 ($0.14 / $0.28)</option>
-                      </optgroup>
-                      <optgroup label="Alibaba (External / Qwen)">
-                        <option value="qwen-2-5-max">Qwen • 2.5 Max ($1.60 / $6.40)</option>
-                        <option value="qwen-2-5-72b">Qwen • 2.5 72B Instruct ($0.35 / $0.70)</option>
-                        <option value="qwen-2-5-coder">Qwen • 2.5 Coder 32B ($0.20 / $0.40)</option>
-                      </optgroup>
-                      <optgroup label="Mistral AI (External / Sovereign)">
-                        <option value="mistral-large-2">Mistral • Mistral Large 2 ($2.00 / $6.00)</option>
-                        <option value="codestral">Mistral • Codestral 2501 ($0.30 / $0.90)</option>
-                      </optgroup>
-                      <optgroup label="xAI (External / Grok)">
-                        <option value="grok-3">xAI • Grok 3 Flagship ($3.00 / $15.00)</option>
-                        <option value="grok-3-mini">xAI • Grok 3 Mini ($0.30 / $1.50)</option>
-                        <option value="grok-2">xAI • Grok 2 ($2.00 / $10.00)</option>
-                      </optgroup>
-                      <optgroup label="Anthropic (External / Claude)">
-                        <option value="claude-3-7-sonnet">Anthropic • Claude 3.7 Sonnet ($3.00 / $15.00)</option>
-                        <option value="claude-3-5-sonnet">Anthropic • Claude 3.5 Sonnet ($3.00 / $15.00)</option>
-                        <option value="claude-3-5-haiku">Anthropic • Claude 3.5 Haiku ($0.80 / $4.00)</option>
-                      </optgroup>
-                      <optgroup label="OpenAI (External / ChatGPT)">
-                        <option value="gpt-4o">OpenAI • GPT-4o ($2.50 / $10.00)</option>
-                        <option value="gpt-4o-mini">OpenAI • GPT-4o Mini ($0.15 / $0.60)</option>
-                        <option value="o3-mini">OpenAI • o3-mini Reasoning ($1.10 / $4.40)</option>
-                      </optgroup>
-                      <optgroup label="Non-Traditional & Open Weights">
-                        <option value="yi-lightning">01.AI • Yi-Lightning ($0.14 / $0.14)</option>
-                        <option value="command-r-plus">Cohere • Command R+ ($2.50 / $10.00)</option>
-                        <option value="llama-3-3-70b">Meta • Llama 3.3 70B ($0.50 / $0.80)</option>
-                        <option value="OpenRouter">Any • Any ($0.01 / $0.01)</option>
-                        <option value="custom-external">Custom / Other Model (User Defined)</option>
-                      </optgroup>
-                    </select>
+                    <ModelSelectorDropdown
+                      id="modal-agent-a-selector"
+                      selectedModel={agentA.model}
+                      selectedBrand={agentA.brand}
+                      onSelectModel={(m) => handleSelectCatalogModel('agentA', m)}
+                      accentColor="indigo"
+                    />
                   </div>
                 </div>
 
@@ -451,83 +399,15 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
 
                   <div>
                     <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Model Preset / AI Engine
+                      Model Catalog / AI Engine (400+ Models)
                     </label>
-                    <select
-                      value={agentB.model}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === 'custom-external') {
-                          setAgentB({
-                            ...agentB,
-                            model: 'custom-external-model',
-                            provider: 'custom',
-                            isManualExternal: true,
-                            customBrand: 'Custom',
-                            customModel: 'Custom Model',
-                          });
-                        } else {
-                          handleSelectPreset('agentB', val);
-                        }
-                      }}
-                      className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    >
-                      <optgroup label="Google (Gemini Native & Automated)">
-                        <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash ($0.15 / $0.60)</option>
-                        <option value="gemini-3.1-pro-preview">Google • Gemini 3.1 Pro Preview ($1.25 / $5.00)</option>
-                        <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite ($0.075 / $0.30)</option>
-                        <option value="gemini-flash-latest">Google • Gemini Flash Latest ($0.15 / $0.60)</option>
-                      </optgroup>
-                      <optgroup label="Microsoft (External / Copilot / Azure)">
-                        <option value="phi-4">Microsoft • Phi-4 14B ($0.10 / $0.40)</option>
-                        <option value="phi-3-5-moe">Microsoft • Phi-3.5 MoE ($0.15 / $0.60)</option>
-                        <option value="phi-3-5-mini">Microsoft • Phi-3.5 Mini ($0.05 / $0.15)</option>
-                      </optgroup>
-                      <optgroup label="Amazon (External / AWS Bedrock / Nova)">
-                        <option value="amazon-nova-pro">Amazon • Nova Pro ($0.80 / $3.20)</option>
-                        <option value="amazon-nova-lite">Amazon • Nova Lite ($0.06 / $0.24)</option>
-                        <option value="amazon-nova-micro">Amazon • Nova Micro ($0.035 / $0.14)</option>
-                      </optgroup>
-                      <optgroup label="Moonshot AI (External / Kimi)">
-                        <option value="kimi-k1-5">Moonshot • Kimi k1.5 ($1.00 / $4.00)</option>
-                        <option value="kimi-chat-128k">Moonshot • Kimi Chat 128k ($0.80 / $3.20)</option>
-                      </optgroup>
-                      <optgroup label="DeepSeek Suite (External / R1 & V3)">
-                        <option value="deepseek-r1">DeepSeek • R1 Reasoning ($0.55 / $2.19)</option>
-                        <option value="deepseek-v3">DeepSeek • V3 General ($0.14 / $0.28)</option>
-                        <option value="deepseek-coder-v2">DeepSeek • Coder V2 ($0.14 / $0.28)</option>
-                      </optgroup>
-                      <optgroup label="Alibaba (External / Qwen)">
-                        <option value="qwen-2-5-max">Qwen • 2.5 Max ($1.60 / $6.40)</option>
-                        <option value="qwen-2-5-72b">Qwen • 2.5 72B Instruct ($0.35 / $0.70)</option>
-                        <option value="qwen-2-5-coder">Qwen • 2.5 Coder 32B ($0.20 / $0.40)</option>
-                      </optgroup>
-                      <optgroup label="Mistral AI (External / Sovereign)">
-                        <option value="mistral-large-2">Mistral • Mistral Large 2 ($2.00 / $6.00)</option>
-                        <option value="codestral">Mistral • Codestral 2501 ($0.30 / $0.90)</option>
-                      </optgroup>
-                      <optgroup label="xAI (External / Grok)">
-                        <option value="grok-3">xAI • Grok 3 Flagship ($3.00 / $15.00)</option>
-                        <option value="grok-3-mini">xAI • Grok 3 Mini ($0.30 / $1.50)</option>
-                        <option value="grok-2">xAI • Grok 2 ($2.00 / $10.00)</option>
-                      </optgroup>
-                      <optgroup label="Anthropic (External / Claude)">
-                        <option value="claude-3-7-sonnet">Anthropic • Claude 3.7 Sonnet ($3.00 / $15.00)</option>
-                        <option value="claude-3-5-sonnet">Anthropic • Claude 3.5 Sonnet ($3.00 / $15.00)</option>
-                        <option value="claude-3-5-haiku">Anthropic • Claude 3.5 Haiku ($0.80 / $4.00)</option>
-                      </optgroup>
-                      <optgroup label="OpenAI (External / ChatGPT)">
-                        <option value="gpt-4o">OpenAI • GPT-4o ($2.50 / $10.00)</option>
-                        <option value="gpt-4o-mini">OpenAI • GPT-4o Mini ($0.15 / $0.60)</option>
-                        <option value="o3-mini">OpenAI • o3-mini Reasoning ($1.10 / $4.40)</option>
-                      </optgroup>
-                      <optgroup label="Non-Traditional & Open Weights">
-                        <option value="yi-lightning">01.AI • Yi-Lightning ($0.14 / $0.14)</option>
-                        <option value="command-r-plus">Cohere • Command R+ ($2.50 / $10.00)</option>
-                        <option value="llama-3-3-70b">Meta • Llama 3.3 70B ($0.50 / $0.80)</option>
-                        <option value="custom-external">Custom / Other Model (User Defined)</option>
-                      </optgroup>
-                    </select>
+                    <ModelSelectorDropdown
+                      id="modal-agent-b-selector"
+                      selectedModel={agentB.model}
+                      selectedBrand={agentB.brand}
+                      onSelectModel={(m) => handleSelectCatalogModel('agentB', m)}
+                      accentColor="emerald"
+                    />
                   </div>
                 </div>
 

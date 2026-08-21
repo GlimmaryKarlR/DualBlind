@@ -930,6 +930,9 @@ export default function App() {
               maxTurns={maxTurns}
             />
 
+            {/* Problem Statement & Consensus Protocol (Grouped with Question Selector) */}
+            <ProblemCard problem={currentProblem} />
+
             {/* Error Notification / Recovery Banner */}
             {turnError && (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/40 text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between gap-4 shadow-sm animate-fade-in">
@@ -988,12 +991,10 @@ export default function App() {
               isRunning={isRunning}
             />
 
-            {/* Split Screen: Problem + Chat on Left (60%), Live Telemetry on Right (40%) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Problem Statement & Chat Transcript */}
-              <div className="lg:col-span-7 space-y-4">
-                <ProblemCard problem={currentProblem} />
-
+            {/* Split Screen: Equal Width (50% / 50%) for Dialogue and Telemetry */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              {/* Left Column: Dual-Blind Multi-Agent Dialogue */}
+              <div className="space-y-4">
                 {/* External Agent Manual Proxy Card */}
                 {waitingForManualProxy && (
                   <ExternalAgentInputCard
@@ -1019,19 +1020,17 @@ export default function App() {
               </div>
 
               {/* Right Column: Live Telemetry, Compute Metrics & Verifier */}
-              <div className="lg:col-span-5">
-                <div className="sticky top-20">
-                  <TelemetryPanel
-                    metrics={metrics}
-                    consensusStatus={consensusStatus}
-                    verification={verification}
-                    turnCount={turns.length}
-                    maxTurns={maxTurns}
-                    isUncapped={isUncapped}
-                    isRunning={isRunning}
-                    onAbortInfiniteBurn={handleFlagLoopAndAbort}
-                  />
-                </div>
+              <div className="sticky top-20">
+                <TelemetryPanel
+                  metrics={metrics}
+                  consensusStatus={consensusStatus}
+                  verification={verification}
+                  turnCount={turns.length}
+                  maxTurns={maxTurns}
+                  isUncapped={isUncapped}
+                  isRunning={isRunning}
+                  onAbortInfiniteBurn={handleFlagLoopAndAbort}
+                />
               </div>
             </div>
           </div>

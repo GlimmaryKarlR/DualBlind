@@ -1,7 +1,9 @@
 import React from 'react';
 import { AgentConfig, ChatTurn, ProviderApiKeys } from '../types/benchmark';
 import { parseModelBrandInfo, MODEL_PRESETS, ModelPreset } from '../utils/modelTracker';
+import { CatalogModel } from '../utils/modelCatalog';
 import { hasConfiguredKeyForProvider } from '../utils/tokenStorage';
+import { ModelSelectorDropdown } from './ModelSelectorDropdown';
 import { Bot, Sparkles, AlertTriangle, ShieldCheck, Cpu, Clock, Sliders, ExternalLink, ChevronDown, Key, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 
@@ -48,29 +50,26 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
   const hasKeyA = hasConfiguredKeyForProvider(agentA.provider, apiKeys);
   const hasKeyB = hasConfiguredKeyForProvider(agentB.provider, apiKeys);
 
-  const handleSelectPreset = (agentKey: 'agentA' | 'agentB', presetId: string) => {
-    const preset = MODEL_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-
+  const handleSelectModel = (agentKey: 'agentA' | 'agentB', catalogModel: CatalogModel) => {
     if (agentKey === 'agentA' && onChangeAgentA) {
       onChangeAgentA({
         ...agentA,
-        model: preset.modelCode,
-        provider: preset.provider,
-        brand: preset.brand,
-        isManualExternal: preset.isExternal,
-        customBrand: preset.provider === 'custom' ? agentA.customBrand || 'Custom' : undefined,
-        customModel: preset.provider === 'custom' ? agentA.customModel || 'Custom LLM' : undefined,
+        model: catalogModel.modelCode || catalogModel.id,
+        provider: catalogModel.provider,
+        brand: catalogModel.brand,
+        isManualExternal: catalogModel.isExternal,
+        customBrand: catalogModel.provider === 'custom' ? catalogModel.brand : undefined,
+        customModel: catalogModel.provider === 'custom' ? catalogModel.name : undefined,
       });
     } else if (agentKey === 'agentB' && onChangeAgentB) {
       onChangeAgentB({
         ...agentB,
-        model: preset.modelCode,
-        provider: preset.provider,
-        brand: preset.brand,
-        isManualExternal: preset.isExternal,
-        customBrand: preset.provider === 'custom' ? agentB.customBrand || 'Custom' : undefined,
-        customModel: preset.provider === 'custom' ? agentB.customModel || 'Custom LLM' : undefined,
+        model: catalogModel.modelCode || catalogModel.id,
+        provider: catalogModel.provider,
+        brand: catalogModel.brand,
+        isManualExternal: catalogModel.isExternal,
+        customBrand: catalogModel.provider === 'custom' ? catalogModel.brand : undefined,
+        customModel: catalogModel.provider === 'custom' ? catalogModel.name : undefined,
       });
     }
   };
@@ -185,73 +184,16 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
             <div>{getStatusBadge(modelInfoA, hasKeyA)}</div>
           </div>
 
-          {/* Direct Dropdown Selector */}
+          {/* Direct Model Selector with Expandable Brand Accordions */}
           <div className="mt-2.5">
-            <select
+            <ModelSelectorDropdown
+              id="agent-a-model-selector"
+              selectedModel={agentA.model}
+              selectedBrand={agentA.brand}
+              onSelectModel={(m) => handleSelectModel('agentA', m)}
               disabled={isRunning}
-              value={
-                MODEL_PRESETS.find((p) => p.modelCode === agentA.model || p.id === agentA.model)?.id ||
-                (agentA.isManualExternal ? 'custom-external' : 'gemini-3.7-flash')
-              }
-              onChange={(e) => handleSelectPreset('agentA', e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 disabled:opacity-60"
-            >
-              <optgroup label="Google (Automated API)">
-                <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash</option>
-                <option value="gemini-3.1-pro-preview">Google • Gemini 3.1 Pro (Reasoning)</option>
-                <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
-                <option value="gemini-flash-latest">Google • Gemini Flash Latest</option>
-              </optgroup>
-              <optgroup label="Microsoft (External / Copilot / Azure)">
-                <option value="phi-4">Microsoft • Phi-4 (14B)</option>
-                <option value="phi-3-5-moe">Microsoft • Phi-3.5 MoE</option>
-                <option value="phi-3-5-mini">Microsoft • Phi-3.5 Mini</option>
-              </optgroup>
-              <optgroup label="Amazon (External / AWS Bedrock / Nova)">
-                <option value="amazon-nova-pro">Amazon • Nova Pro</option>
-                <option value="amazon-nova-lite">Amazon • Nova Lite</option>
-                <option value="amazon-nova-micro">Amazon • Nova Micro</option>
-              </optgroup>
-              <optgroup label="Moonshot AI (External / Kimi)">
-                <option value="kimi-k1-5">Moonshot • Kimi k1.5</option>
-                <option value="kimi-chat-128k">Moonshot • Kimi Chat (128k)</option>
-              </optgroup>
-              <optgroup label="DeepSeek (External Copy & Paste)">
-                <option value="deepseek-r1">DeepSeek • DeepSeek R1</option>
-                <option value="deepseek-v3">DeepSeek • DeepSeek V3</option>
-                <option value="deepseek-coder-v2">DeepSeek • DeepSeek Coder V2</option>
-              </optgroup>
-              <optgroup label="Alibaba (External / Qwen)">
-                <option value="qwen-2-5-max">Alibaba • Qwen 2.5 Max</option>
-                <option value="qwen-2-5-72b">Alibaba • Qwen 2.5 72B Instruct</option>
-                <option value="qwen-2-5-coder">Alibaba • Qwen 2.5 Coder (32B)</option>
-              </optgroup>
-              <optgroup label="xAI (External Copy & Paste / Grok)">
-                <option value="grok-3">xAI • Grok 3</option>
-                <option value="grok-3-mini">xAI • Grok 3 Mini</option>
-                <option value="grok-2">xAI • Grok 2</option>
-              </optgroup>
-              <optgroup label="Mistral AI (External Copy & Paste)">
-                <option value="mistral-large-2">Mistral AI • Mistral Large 2</option>
-                <option value="codestral">Mistral AI • Codestral 2501</option>
-              </optgroup>
-              <optgroup label="Anthropic (External Copy & Paste)">
-                <option value="claude-3-7-sonnet">Anthropic • Claude 3.7 Sonnet</option>
-                <option value="claude-3-5-sonnet">Anthropic • Claude 3.5 Sonnet</option>
-                <option value="claude-3-5-haiku">Anthropic • Claude 3.5 Haiku</option>
-              </optgroup>
-              <optgroup label="OpenAI (External Copy & Paste)">
-                <option value="gpt-4o">OpenAI • GPT-4o</option>
-                <option value="gpt-4o-mini">OpenAI • GPT-4o Mini</option>
-                <option value="o3-mini">OpenAI • o3-mini</option>
-              </optgroup>
-              <optgroup label="Non-Traditional & Open Weights">
-                <option value="yi-lightning">01.AI • Yi-Lightning</option>
-                <option value="command-r-plus">Cohere • Command R+</option>
-                <option value="llama-3-3-70b">Meta • Llama 3.3 70B</option>
-                <option value="custom-external">Custom Model (User Proxy)</option>
-              </optgroup>
-            </select>
+              accentColor="indigo"
+            />
           </div>
 
           {/* Model routing status */}
@@ -309,73 +251,16 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
             <div>{getStatusBadge(modelInfoB, hasKeyB)}</div>
           </div>
 
-          {/* Direct Dropdown Selector */}
+          {/* Direct Model Selector with Expandable Brand Accordions */}
           <div className="mt-2.5">
-            <select
+            <ModelSelectorDropdown
+              id="agent-b-model-selector"
+              selectedModel={agentB.model}
+              selectedBrand={agentB.brand}
+              onSelectModel={(m) => handleSelectModel('agentB', m)}
               disabled={isRunning}
-              value={
-                MODEL_PRESETS.find((p) => p.modelCode === agentB.model || p.id === agentB.model)?.id ||
-                (agentB.isManualExternal ? 'custom-external' : 'gemini-3.7-flash')
-              }
-              onChange={(e) => handleSelectPreset('agentB', e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 disabled:opacity-60"
-            >
-              <optgroup label="Google (Automated API)">
-                <option value="gemini-3.7-flash">Google • Gemini 3.7 Flash</option>
-                <option value="gemini-3.1-pro-preview">Google • Gemini 3.1 Pro (Reasoning)</option>
-                <option value="gemini-3.1-flash-lite">Google • Gemini 3.1 Flash Lite</option>
-                <option value="gemini-flash-latest">Google • Gemini Flash Latest</option>
-              </optgroup>
-              <optgroup label="Microsoft (External / Copilot / Azure)">
-                <option value="phi-4">Microsoft • Phi-4 (14B)</option>
-                <option value="phi-3-5-moe">Microsoft • Phi-3.5 MoE</option>
-                <option value="phi-3-5-mini">Microsoft • Phi-3.5 Mini</option>
-              </optgroup>
-              <optgroup label="Amazon (External / AWS Bedrock / Nova)">
-                <option value="amazon-nova-pro">Amazon • Nova Pro</option>
-                <option value="amazon-nova-lite">Amazon • Nova Lite</option>
-                <option value="amazon-nova-micro">Amazon • Nova Micro</option>
-              </optgroup>
-              <optgroup label="Moonshot AI (External / Kimi)">
-                <option value="kimi-k1-5">Moonshot • Kimi k1.5</option>
-                <option value="kimi-chat-128k">Moonshot • Kimi Chat (128k)</option>
-              </optgroup>
-              <optgroup label="DeepSeek (External Copy & Paste)">
-                <option value="deepseek-r1">DeepSeek • DeepSeek R1</option>
-                <option value="deepseek-v3">DeepSeek • DeepSeek V3</option>
-                <option value="deepseek-coder-v2">DeepSeek • DeepSeek Coder V2</option>
-              </optgroup>
-              <optgroup label="Alibaba (External / Qwen)">
-                <option value="qwen-2-5-max">Alibaba • Qwen 2.5 Max</option>
-                <option value="qwen-2-5-72b">Alibaba • Qwen 2.5 72B Instruct</option>
-                <option value="qwen-2-5-coder">Alibaba • Qwen 2.5 Coder (32B)</option>
-              </optgroup>
-              <optgroup label="xAI (External Copy & Paste / Grok)">
-                <option value="grok-3">xAI • Grok 3</option>
-                <option value="grok-3-mini">xAI • Grok 3 Mini</option>
-                <option value="grok-2">xAI • Grok 2</option>
-              </optgroup>
-              <optgroup label="Mistral AI (External Copy & Paste)">
-                <option value="mistral-large-2">Mistral AI • Mistral Large 2</option>
-                <option value="codestral">Mistral AI • Codestral 2501</option>
-              </optgroup>
-              <optgroup label="Anthropic (External Copy & Paste)">
-                <option value="claude-3-7-sonnet">Anthropic • Claude 3.7 Sonnet</option>
-                <option value="claude-3-5-sonnet">Anthropic • Claude 3.5 Sonnet</option>
-                <option value="claude-3-5-haiku">Anthropic • Claude 3.5 Haiku</option>
-              </optgroup>
-              <optgroup label="OpenAI (External Copy & Paste)">
-                <option value="gpt-4o">OpenAI • GPT-4o</option>
-                <option value="gpt-4o-mini">OpenAI • GPT-4o Mini</option>
-                <option value="o3-mini">OpenAI • o3-mini</option>
-              </optgroup>
-              <optgroup label="Non-Traditional & Open Weights">
-                <option value="yi-lightning">01.AI • Yi-Lightning</option>
-                <option value="command-r-plus">Cohere • Command R+</option>
-                <option value="llama-3-3-70b">Meta • Llama 3.3 70B</option>
-                <option value="custom-external">Custom Model (User Proxy)</option>
-              </optgroup>
-            </select>
+              accentColor="emerald"
+            />
           </div>
 
           {/* Model routing status */}

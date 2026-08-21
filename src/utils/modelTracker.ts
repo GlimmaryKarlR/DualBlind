@@ -1,3 +1,5 @@
+import { findCatalogModel, BRAND_COLORS } from './modelCatalog';
+
 export interface ModelBrandInfo {
   brand: string;
   brandColor: string;
@@ -437,12 +439,19 @@ export function parseModelBrandInfo(
   let inputPrice = 0.15;
   let outputPrice = 0.60;
 
-  // Match against known preset by code or ID
+  // 1. Check full 400+ model catalog
+  const catalogMatch = findCatalogModel(model) || (actualModelUsed ? findCatalogModel(actualModelUsed) : undefined);
   const matchedPreset = MODEL_PRESETS.find(
     (p) => p.modelCode.toLowerCase() === model || p.id.toLowerCase() === model || model.includes(p.id)
   );
 
-  if (matchedPreset) {
+  if (catalogMatch) {
+    brand = catalogMatch.brand;
+    displayName = catalogMatch.name;
+    inputPrice = catalogMatch.inputPricePerMillion;
+    outputPrice = catalogMatch.outputPricePerMillion;
+    brandColor = BRAND_COLORS[catalogMatch.brand] || 'indigo';
+  } else if (matchedPreset) {
     brand = matchedPreset.brand;
     displayName = matchedPreset.name;
     inputPrice = matchedPreset.inputPricePerMillion;
