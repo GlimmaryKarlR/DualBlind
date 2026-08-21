@@ -98,7 +98,7 @@ export const PROVIDER_METAS: ProviderMeta[] = [
     portalUrl: 'https://console.anthropic.com/settings/keys',
     portalName: 'Anthropic Console',
     helpText: 'Claude 3.7 Sonnet, Claude 3.5 Sonnet, and Haiku.',
-    recommendedModels: ['claude-3-7-sonnet', 'claude-3-5-sonnet', 'claude-3-5-haiku'],
+    recommendedModels: ['claude-3-7-sonnet', 'claude-3-5-sonnet', 'claude-3-haiku'],
   },
   {
     id: 'mistral',

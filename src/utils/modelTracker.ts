@@ -350,14 +350,14 @@ export const MODEL_PRESETS: ModelPreset[] = [
     outputPricePerMillion: 15.00,
   },
   {
-    id: 'claude-3-5-haiku',
+    id: 'claude-3-haiku',
     provider: 'anthropic',
     brand: 'Anthropic',
-    name: 'Claude 3.5 Haiku',
-    modelCode: 'claude-3-5-haiku',
+    name: 'Claude 3 Haiku',
+    modelCode: 'anthropic/claude-3-haiku',
     isExternal: true,
-    inputPricePerMillion: 0.80,
-    outputPricePerMillion: 4.00,
+    inputPricePerMillion: 0.25,
+    outputPricePerMillion: 1.25,
   },
 
   // OpenAI (External Copy & Paste)

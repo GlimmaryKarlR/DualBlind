@@ -84,7 +84,7 @@ export function resolveOpenRouterModel(modelName: string): string {
   // 2. Anthropic Claude
   if (lower.includes('claude-3-7') || lower.includes('claude-3.7')) return 'anthropic/claude-3.7-sonnet';
   if (lower.includes('claude-3-5-sonnet') || lower.includes('claude-3.5-sonnet') || lower.includes('sonnet-4') || lower.includes('sonnet-5') || lower.includes('sonnet-latest') || lower.includes('sonnet')) return 'anthropic/claude-3.5-sonnet';
-  if (lower.includes('claude-3-5-haiku') || lower.includes('claude-3.5-haiku') || lower.includes('haiku-4') || lower.includes('haiku-latest') || lower.includes('haiku')) return 'anthropic/claude-3.5-haiku';
+  if (lower.includes('haiku')) return 'anthropic/claude-3-haiku';
   if (lower.includes('opus') || lower.includes('fable')) return 'anthropic/claude-3-opus';
   if (lower.includes('claude')) return 'anthropic/claude-3.5-sonnet';
 

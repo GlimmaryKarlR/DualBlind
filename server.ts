@@ -246,7 +246,7 @@ function resolveOpenRouterModel(modelName: string): string {
 
   if (lower.includes('claude-3-7') || lower.includes('claude-3.7')) return 'anthropic/claude-3.7-sonnet';
   if (lower.includes('claude-3-5-sonnet') || lower.includes('sonnet')) return 'anthropic/claude-3.5-sonnet';
-  if (lower.includes('claude-3-5-haiku') || lower.includes('haiku')) return 'anthropic/claude-3.5-haiku';
+  if (lower.includes('haiku')) return 'anthropic/claude-3-haiku';
   if (lower.includes('opus')) return 'anthropic/claude-3-opus';
 
   if (lower.includes('r1') || lower.includes('reasoner')) return 'deepseek/deepseek-r1';
