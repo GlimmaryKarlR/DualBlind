@@ -588,7 +588,7 @@ function parseModelEntry(raw: string, index: number): CatalogModel {
     name,
     modelCode: modelCode || idSlug,
     provider,
-    isExternal: !isGoogleAutomated,
+    isExternal: false,
     inputPricePerMillion: inPrice,
     outputPricePerMillion: outPrice,
     tags,

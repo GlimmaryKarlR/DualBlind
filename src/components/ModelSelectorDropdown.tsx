@@ -179,7 +179,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
       name: customInput.trim(),
       modelCode: customInput.trim(),
       provider: 'custom',
-      isExternal: true,
+      isExternal: false,
       inputPricePerMillion: 1.0,
       outputPricePerMillion: 3.0,
       tags: ['Custom'],
@@ -401,10 +401,12 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                     {isExpanded && (
                       <div className="divide-y divide-slate-100 border-t border-slate-100 bg-white dark:divide-slate-800/60 dark:border-slate-800 dark:bg-slate-900">
                         {group.models.map((model) => {
+                          const selectedCatalogModel = findCatalogModel(selectedModel);
                           const isSelected =
+                            (selectedCatalogModel && selectedCatalogModel.id === model.id) ||
                             selectedModel === model.id ||
-                            selectedModel === model.modelCode ||
-                            selectedModel === model.rawName;
+                            selectedModel === model.rawName ||
+                            (selectedModel === model.name && selectedBrand === model.brand);
 
                           return (
                             <button

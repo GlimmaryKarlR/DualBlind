@@ -57,7 +57,7 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
         model: catalogModel.modelCode || catalogModel.id,
         provider: catalogModel.provider,
         brand: catalogModel.brand,
-        isManualExternal: catalogModel.isExternal,
+        isManualExternal: false,
         customBrand: catalogModel.provider === 'custom' ? catalogModel.brand : undefined,
         customModel: catalogModel.provider === 'custom' ? catalogModel.name : undefined,
       });
@@ -67,7 +67,7 @@ export const AgentModelTracker: React.FC<AgentModelTrackerProps> = ({
         model: catalogModel.modelCode || catalogModel.id,
         provider: catalogModel.provider,
         brand: catalogModel.brand,
-        isManualExternal: catalogModel.isExternal,
+        isManualExternal: false,
         customBrand: catalogModel.provider === 'custom' ? catalogModel.brand : undefined,
         customModel: catalogModel.provider === 'custom' ? catalogModel.name : undefined,
       });
