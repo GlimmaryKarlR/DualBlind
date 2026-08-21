@@ -21,7 +21,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { BenchmarkRunRecord, TopicCategory } from '../types/benchmark';
-import { formatTime, formatNumber, formatCurrency, getTierBadge, getTeamFunctionalityBadge } from '../utils/formatters';
+import { formatTime, formatNumber, formatCurrency, getTierBadge, getTeamFunctionalityBadge, getAgentMakeAndModel } from '../utils/formatters';
 
 interface LeaderboardViewProps {
   runs: BenchmarkRunRecord[];
@@ -255,6 +255,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     run.metrics.isCorrect
                   );
                   const wallClockSec = (run.metrics.totalWallClockMs / 1000).toFixed(2);
+                  const aInfo = getAgentMakeAndModel(run.agentAConfig);
+                  const bInfo = getAgentMakeAndModel(run.agentBConfig);
 
                   return (
                     <tr
@@ -304,13 +306,17 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                         </span>
                       </td>
 
-                      {/* Team Functionality Verdict */}
+                      {/* Team Functionality Verdict & Make/Model */}
                       <td className="px-4 py-3.5">
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${teamBadge.bg} ${teamBadge.color} ${teamBadge.border}`}>
-                          {teamBadge.shortLabel}
-                        </span>
-                        <div className="text-[10px] text-slate-700 dark:text-slate-400 mt-0.5">
-                          {run.agentAConfig.name} & {run.agentBConfig.name}
+                        <div className="space-y-1">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${teamBadge.bg} ${teamBadge.color} ${teamBadge.border}`}>
+                            {teamBadge.shortLabel}
+                          </span>
+                          <div className="text-[11px] font-medium text-slate-800 dark:text-slate-200 leading-tight">
+                            <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{aInfo.fullDisplayName}</span>
+                            <span className="text-slate-400 dark:text-slate-500 mx-1">&</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{bInfo.fullDisplayName}</span>
+                          </div>
                         </div>
                       </td>
 
@@ -378,76 +384,88 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       </div>
 
       {/* Transcript Inspection Dialog */}
-      {inspectModalRun && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900 max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Transcript Inspector: {inspectModalRun.problemTitle}
-                </h3>
-                <p className="text-xs text-slate-700 dark:text-slate-400">
-                  {inspectModalRun.agentAConfig.name} vs {inspectModalRun.agentBConfig.name} • {inspectModalRun.metrics.turnsCount} Turns • Cost: {formatCurrency(inspectModalRun.metrics.totalCostUsd)} • Efficiency: {inspectModalRun.metrics.efficiencyIndex.toFixed(1)} pts
-                </p>
-              </div>
-
-              <button
-                onClick={() => setInspectModalRun(null)}
-                className="rounded-full p-1.5 text-slate-700 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-slate-800 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Scrollable Dialogue Content */}
-            <div className="flex-1 overflow-y-auto my-4 space-y-3 pr-2">
-              {inspectModalRun.turns.map((turn, i) => (
-                <div
-                  key={turn.id || i}
-                  className={`p-3.5 rounded-xl text-xs ${
-                    turn.agentId === 'agent_a'
-                      ? 'bg-slate-50 border border-indigo-100 dark:bg-slate-800/70 dark:border-indigo-900/40'
-                      : 'bg-emerald-50/70 border border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-bold mb-1.5">
-                    <span className={turn.agentId === 'agent_a' ? 'text-indigo-600 dark:text-indigo-400' : 'text-emerald-600 dark:text-emerald-400'}>
-                      {turn.agentName} (Turn {turn.agentTurnNumber})
-                    </span>
-                    <span className="font-mono text-[10px] text-slate-700 dark:text-slate-400">
-                      {formatTime(turn.latencyMs)} • {turn.totalTokens} tokens • {formatCurrency(turn.costUsd || 0)}
-                    </span>
-                  </div>
-                  <div className="whitespace-pre-line text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
-                    {turn.content}
-                  </div>
+      {inspectModalRun && (() => {
+        const modalAInfo = getAgentMakeAndModel(inspectModalRun.agentAConfig);
+        const modalBInfo = getAgentMakeAndModel(inspectModalRun.agentBConfig);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-fade-in">
+            <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900 max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Transcript Inspector: {inspectModalRun.problemTitle}
+                  </h3>
+                  <p className="text-xs text-slate-700 dark:text-slate-400">
+                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">{modalAInfo.fullDisplayName}</span>
+                    <span className="mx-1">vs</span>
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">{modalBInfo.fullDisplayName}</span>
+                    <span className="mx-1.5">•</span>
+                    <span>{inspectModalRun.metrics.turnsCount} Turns</span>
+                    <span className="mx-1.5">•</span>
+                    <span>Cost: {formatCurrency(inspectModalRun.metrics.totalCostUsd)}</span>
+                    <span className="mx-1.5">•</span>
+                    <span>Efficiency: {inspectModalRun.metrics.efficiencyIndex.toFixed(1)} pts</span>
+                  </p>
                 </div>
-              ))}
-            </div>
 
-            {/* Footer */}
-            <div className="border-t border-slate-100 pt-3 dark:border-slate-800 flex items-center justify-between">
-              <div className="text-xs">
-                <span className="text-slate-700 dark:text-slate-400">Agreed Answer: </span>
-                <span className="font-mono font-bold text-slate-900 dark:text-white">
-                  {inspectModalRun.finalAgreedAnswer || 'None'}
-                </span>
+                <button
+                  onClick={() => setInspectModalRun(null)}
+                  className="rounded-full p-1.5 text-slate-700 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
-              <button
-                onClick={() => {
-                  onLaunchChallenge(inspectModalRun.problemId);
-                  setInspectModalRun(null);
-                }}
-                className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-500 cursor-pointer"
-              >
-                Replay in Arena
-              </button>
+              {/* Scrollable Dialogue Content */}
+              <div className="flex-1 overflow-y-auto my-4 space-y-3 pr-2">
+                {inspectModalRun.turns.map((turn, i) => (
+                  <div
+                    key={turn.id || i}
+                    className={`p-3.5 rounded-xl text-xs ${
+                      turn.agentId === 'agent_a'
+                        ? 'bg-slate-50 border border-indigo-100 dark:bg-slate-800/70 dark:border-indigo-900/40'
+                        : 'bg-emerald-50/70 border border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold mb-1.5">
+                      <span className={turn.agentId === 'agent_a' ? 'text-indigo-600 dark:text-indigo-400' : 'text-emerald-600 dark:text-emerald-400'}>
+                        {turn.agentName} (Turn {turn.agentTurnNumber})
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-700 dark:text-slate-400">
+                        {formatTime(turn.latencyMs)} • {turn.totalTokens} tokens • {formatCurrency(turn.costUsd || 0)}
+                      </span>
+                    </div>
+                    <div className="whitespace-pre-line text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
+                      {turn.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <div className="border-t border-slate-100 pt-3 dark:border-slate-800 flex items-center justify-between">
+                <div className="text-xs">
+                  <span className="text-slate-700 dark:text-slate-400">Agreed Answer: </span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">
+                    {inspectModalRun.finalAgreedAnswer || 'None'}
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    onLaunchChallenge(inspectModalRun.problemId);
+                    setInspectModalRun(null);
+                  }}
+                  className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-500 cursor-pointer"
+                >
+                  Replay in Arena
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

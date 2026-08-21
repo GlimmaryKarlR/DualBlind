@@ -1,5 +1,6 @@
 import confetti from 'canvas-confetti';
-import { TeamFunctionalityRating } from '../types/benchmark';
+import { TeamFunctionalityRating, AgentConfig } from '../types/benchmark';
+import { findCatalogModel } from './modelCatalog';
 
 export function fireSuccessConfetti() {
   confetti({
@@ -268,5 +269,126 @@ export function getTierBadge(efficiencyIndex: number, isCorrect: boolean): {
       border: 'border-orange-200 dark:border-orange-800',
     };
   }
+}
+
+export interface AgentMakeModelInfo {
+  make: string;
+  modelName: string;
+  roleName: string;
+  fullDisplayName: string;
+  shortLabel: string;
+}
+
+/**
+ * Extracts and formats the canonical Make (Brand) and Model for any agent config.
+ * Handles existing strings like "Agent Alpha (Gemini 2.5 Flash)", model IDs like "tencent/hy3",
+ * and custom models gracefully.
+ */
+export function getAgentMakeAndModel(agent?: Partial<AgentConfig>): AgentMakeModelInfo {
+  if (!agent) {
+    return {
+      make: 'Unknown',
+      modelName: 'Default',
+      roleName: 'Agent',
+      fullDisplayName: 'Agent (Unknown)',
+      shortLabel: 'Unknown',
+    };
+  }
+
+  // 1. Determine base role name (Agent Alpha or Agent Beta)
+  let rawName = (agent.name || '').trim();
+  let defaultRole = agent.id === 'agent_b' ? 'Agent Beta' : 'Agent Alpha';
+  let roleName = defaultRole;
+  let embeddedContent = '';
+
+  if (rawName) {
+    const parenMatch = rawName.match(/^([^(]+)\s*\((.+)\)$/);
+    if (parenMatch) {
+      roleName = parenMatch[1].trim() || defaultRole;
+      embeddedContent = parenMatch[2].trim();
+    } else {
+      roleName = rawName;
+    }
+  }
+
+  // 2. If custom model
+  if (agent.customModel || agent.customBrand) {
+    const make = agent.customBrand || agent.brand || 'Custom';
+    const modelName = agent.customModel || agent.model || 'Custom Model';
+    return {
+      make,
+      modelName,
+      roleName,
+      fullDisplayName: `${roleName} (${make}: ${modelName})`,
+      shortLabel: `${make}: ${modelName}`,
+    };
+  }
+
+  // 3. Lookup in catalog
+  const catalog = findCatalogModel(agent.model || embeddedContent || '');
+  let make = agent.brand || catalog?.brand || '';
+  let modelName = catalog?.name || '';
+
+  // If no catalog match, check embedded content from name (e.g. "Gemini 2.5 Flash")
+  if (!modelName && embeddedContent) {
+    const embeddedCat = findCatalogModel(embeddedContent);
+    if (embeddedCat) {
+      make = make || embeddedCat.brand;
+      modelName = embeddedCat.name;
+    } else {
+      modelName = embeddedContent;
+    }
+  }
+
+  // If still no model name, use raw model identifier
+  if (!modelName) {
+    modelName = agent.model || 'Gemini 3.7 Flash';
+  }
+
+  // If make is still missing, infer from model string or provider
+  if (!make) {
+    if (modelName.includes('/')) {
+      const parts = modelName.split('/');
+      const prefix = parts[0].toLowerCase();
+      if (prefix === 'moonshotai') make = 'Moonshot AI';
+      else if (prefix === 'x-ai' || prefix === 'xai') make = 'xAI';
+      else if (prefix === 'meta-llama' || prefix === 'meta') make = 'Meta';
+      else if (prefix === 'thudm') make = 'Z.ai';
+      else if (prefix === 'tencent') make = 'Tencent';
+      else if (prefix === 'stepfun') make = 'StepFun';
+      else if (prefix === 'xiaomi') make = 'Xiaomi';
+      else make = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+
+      modelName = parts.slice(1).join('/');
+    } else if (agent.provider) {
+      if (agent.provider === 'moonshot') make = 'Moonshot AI';
+      else if (agent.provider === 'google') make = 'Google';
+      else if (agent.provider === 'anthropic') make = 'Anthropic';
+      else if (agent.provider === 'openai') make = 'OpenAI';
+      else if (agent.provider === 'deepseek') make = 'DeepSeek';
+      else if (agent.provider === 'qwen') make = 'Qwen';
+      else if (agent.provider === 'mistral') make = 'Mistral';
+      else if (agent.provider === 'meta') make = 'Meta';
+      else if (agent.provider === 'xai') make = 'xAI';
+      else if (agent.provider === 'microsoft') make = 'Microsoft';
+      else if (agent.provider === 'amazon') make = 'Amazon';
+      else if (agent.provider === 'cohere') make = 'Cohere';
+      else make = agent.provider.charAt(0).toUpperCase() + agent.provider.slice(1);
+    } else {
+      make = 'AI';
+    }
+  }
+
+  // Clean modelName so it doesn't duplicate the make prefix (e.g. avoid "Google: Google Gemini 3.7 Flash")
+  const cleanModelName = modelName.replace(new RegExp(`^${make}:?\\s*`, 'i'), '').trim();
+  const shortLabel = make ? `${make}: ${cleanModelName}` : cleanModelName;
+
+  return {
+    make,
+    modelName: cleanModelName,
+    roleName,
+    fullDisplayName: `${roleName} (${shortLabel})`,
+    shortLabel,
+  };
 }
 
