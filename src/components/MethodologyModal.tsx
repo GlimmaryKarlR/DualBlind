@@ -11,6 +11,7 @@ import {
   Cpu,
   Target,
   CheckCircle2,
+  Info,
 } from 'lucide-react';
 
 interface MethodologyModalProps {
@@ -49,6 +50,17 @@ export const MethodologyModal: React.FC<MethodologyModalProps> = ({
         </div>
 
         <div className="mt-6 space-y-6 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+          {/* Section 0: About */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white mb-1.5 flex items-center gap-1.5">
+              <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              About DualBlind Benchmark
+            </h3>
+            <p className="text-slate-700 dark:text-slate-300 text-xs leading-relaxed">
+              <strong>DualBlind</strong> is an adversarial and collaborative multi-agent evaluation benchmark that pairs two frontier AI models in dual-blind dialogue to solve complex logic, game-theoretic strategy, and abstract induction challenges. We built this platform because isolated, single-turn LLM benchmarks fail to measure how models negotiate with counterpart systems, self-correct erroneous premises, detect partner hallucinations, and converge on verifiable ground truth without squandering test-time compute through runaway token inflation and sluggish latency.
+            </p>
+          </div>
+
           {/* Section 1: The Core Thesis */}
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
             <h3 className="text-sm font-bold text-indigo-900 dark:text-indigo-300 mb-1 flex items-center gap-2">
