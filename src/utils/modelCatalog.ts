@@ -1,3 +1,5 @@
+import { resolveOpenRouterModel } from './openRouterResolver';
+
 export interface CatalogModel {
   id: string;
   rawName: string;
@@ -25,6 +27,7 @@ export interface CatalogModel {
   tags?: string[];
   isFree?: boolean;
 }
+
 
 export interface BrandGroup {
   brand: string;
@@ -572,17 +575,18 @@ function parseModelEntry(raw: string, index: number): CatalogModel {
   // Slugify ID
   const idSlug = raw
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^a-z0-9.]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
   const isGoogleAutomated = provider === 'google' && !name.toLowerCase().includes('batch') && !name.toLowerCase().includes('image');
+  const modelCode = isGoogleAutomated ? idSlug : resolveOpenRouterModel(raw);
 
   return {
     id: idSlug || `model-${index}`,
     rawName: raw,
     brand,
     name,
-    modelCode: idSlug,
+    modelCode: modelCode || idSlug,
     provider,
     isExternal: !isGoogleAutomated,
     inputPricePerMillion: inPrice,

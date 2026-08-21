@@ -224,6 +224,84 @@ function generateSyntheticTurnFallback(
   };
 }
 
+// Universal fallback models for OpenRouter
+const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
+  moonshotai: [
+    'moonshotai/kimi-k3',
+    'moonshotai/kimi-k2.5',
+    'moonshotai/kimi-k2-thinking',
+    'moonshotai/kimi-k2.7-code',
+  ],
+  'x-ai': [
+    'x-ai/grok-4.20',
+    'x-ai/grok-4.20:multi-agent',
+    'x-ai/grok-4.6',
+    'x-ai/grok-4.5',
+    'x-ai/grok-4.3',
+    'x-ai/grok-build-0.1',
+    'x-ai/grok-3',
+    'x-ai/grok-3-mini',
+  ],
+  anthropic: [
+    'anthropic/claude-3.7-sonnet',
+    'anthropic/claude-3.5-sonnet',
+    'anthropic/claude-3-haiku',
+    'anthropic/claude-3-opus',
+  ],
+  openai: [
+    'openai/gpt-4o',
+    'openai/gpt-4o-mini',
+    'openai/o3-mini',
+    'openai/o1',
+  ],
+  deepseek: [
+    'deepseek/deepseek-r1',
+    'deepseek/deepseek-chat',
+  ],
+  'meta-llama': [
+    'meta-llama/llama-3.3-70b-instruct',
+    'meta-llama/llama-3.1-405b-instruct',
+  ],
+  qwen: [
+    'qwen/qwen-2.5-72b-instruct',
+    'qwen/qwen-2.5-coder-32b-instruct',
+  ],
+  mistralai: [
+    'mistralai/mistral-large-2411',
+    'mistralai/codestral-2501',
+  ],
+  google: [
+    'google/gemini-2.0-flash-001',
+    'google/gemini-pro-1.5',
+  ],
+};
+
+function detectCreator(raw: string): string | null {
+  const lower = raw.toLowerCase();
+  if (lower.includes('moonshot') || lower.includes('kimi')) return 'moonshotai';
+  if (lower.includes('xai') || lower.includes('spacexai') || lower.includes('grok')) return 'x-ai';
+  if (lower.includes('anthropic') || lower.includes('claude')) return 'anthropic';
+  if (lower.includes('openai') || lower.includes('gpt') || lower.includes('o1') || lower.includes('o3')) return 'openai';
+  if (lower.includes('deepseek')) return 'deepseek';
+  if (lower.includes('meta') || lower.includes('llama')) return 'meta-llama';
+  if (lower.includes('qwen') || lower.includes('alibaba')) return 'qwen';
+  if (lower.includes('mistral') || lower.includes('codestral') || lower.includes('ministral')) return 'mistralai';
+  if (lower.includes('google') || lower.includes('gemini') || lower.includes('gemma')) return 'google';
+  if (lower.includes('amazon') || lower.includes('nova')) return 'amazon';
+  if (lower.includes('microsoft') || lower.includes('phi')) return 'microsoft';
+  if (lower.includes('cohere') || lower.includes('command')) return 'cohere';
+  return null;
+}
+
+function getAlternativeOpenRouterModel(failedModel: string): string {
+  const creator = detectCreator(failedModel);
+  if (creator && CURATED_OPENROUTER_MODELS[creator]) {
+    const alt = CURATED_OPENROUTER_MODELS[creator].find((s) => s !== failedModel);
+    if (alt) return alt;
+  }
+  return 'google/gemini-2.0-flash-001';
+}
+
 // Helper to map model identifiers to valid OpenRouter slugs
 function resolveOpenRouterModel(modelName: string): string {
   const m = (modelName || '').trim();
@@ -232,7 +310,14 @@ function resolveOpenRouterModel(modelName: string): string {
 
   const lower = m.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
 
-  // 1. xAI & SpaceXAI (Supports OpenRouter's newest grok-4.20, 4.6, 4.5, 4.3, 3, etc.)
+  // Moonshot / Kimi
+  if (lower.includes('k3') || lower.includes('kimi-k3')) return 'moonshotai/kimi-k3';
+  if (lower.includes('k2-5') || lower.includes('k2.5') || lower.includes('k2-6') || lower.includes('k2.6')) return 'moonshotai/kimi-k2.5';
+  if (lower.includes('k2-7') || lower.includes('k2.7')) return 'moonshotai/kimi-k2.7-code';
+  if (lower.includes('thinking') && (lower.includes('kimi') || lower.includes('moonshot'))) return 'moonshotai/kimi-k2-thinking';
+  if (lower.includes('kimi') || lower.includes('moonshot')) return 'moonshotai/kimi-k3';
+
+  // xAI & SpaceXAI
   if (lower.includes('grok-4.20-multi-agent') || lower.includes('grok-4-20-multi-agent')) return 'x-ai/grok-4.20:multi-agent';
   if (lower.includes('grok-4.20') || lower.includes('grok-4-20')) return 'x-ai/grok-4.20';
   if (lower.includes('grok-4.6') || lower.includes('grok-4-6')) return 'x-ai/grok-4.6';
@@ -244,43 +329,51 @@ function resolveOpenRouterModel(modelName: string): string {
   if (lower.includes('grok-vision') || lower.includes('grok-2-vision')) return 'x-ai/grok-2-vision-1212';
   if (lower.includes('grok') || lower.includes('xai') || lower.includes('spacexai')) return 'x-ai/grok-4.20';
 
+  // Anthropic
   if (lower.includes('claude-3-7') || lower.includes('claude-3.7')) return 'anthropic/claude-3.7-sonnet';
   if (lower.includes('claude-3-5-sonnet') || lower.includes('sonnet')) return 'anthropic/claude-3.5-sonnet';
   if (lower.includes('haiku')) return 'anthropic/claude-3-haiku';
   if (lower.includes('opus')) return 'anthropic/claude-3-opus';
 
+  // DeepSeek
   if (lower.includes('r1') || lower.includes('reasoner')) return 'deepseek/deepseek-r1';
   if (lower.includes('deepseek') || lower.includes('v3') || lower.includes('v4')) return 'deepseek/deepseek-chat';
 
+  // OpenAI
   if (lower.includes('o3-mini') || lower.includes('o3')) return 'openai/o3-mini';
   if (lower.includes('o1')) return 'openai/o1';
   if (lower.includes('gpt-4o-mini')) return 'openai/gpt-4o-mini';
   if (lower.includes('gpt-4o') || lower.includes('gpt-4') || lower.includes('gpt-5')) return 'openai/gpt-4o';
 
+  // Meta Llama
   if (lower.includes('llama-3.3') || lower.includes('llama-4')) return 'meta-llama/llama-3.3-70b-instruct';
   if (lower.includes('llama-3.1-405b') || lower.includes('405b')) return 'meta-llama/llama-3.1-405b-instruct';
   if (lower.includes('llama-3.1-70b') || lower.includes('70b')) return 'meta-llama/llama-3.1-70b-instruct';
   if (lower.includes('llama-3.1-8b') || lower.includes('8b')) return 'meta-llama/llama-3.1-8b-instruct';
 
+  // Qwen
   if (lower.includes('qwen-coder') || (lower.includes('coder') && lower.includes('qwen'))) return 'qwen/qwen-2.5-coder-32b-instruct';
   if (lower.includes('qwen')) return 'qwen/qwen-2.5-72b-instruct';
 
+  // Mistral
   if (lower.includes('codestral')) return 'mistralai/codestral-2501';
   if (lower.includes('ministral')) return 'mistralai/ministral-8b';
   if (lower.includes('mistral') || lower.includes('mixtral')) return 'mistralai/mistral-large-2411';
 
+  // Microsoft
   if (lower.includes('phi-4')) return 'microsoft/phi-4';
   if (lower.includes('phi-3')) return 'microsoft/phi-3.5-mini-128k-instruct';
   if (lower.includes('wizardlm')) return 'microsoft/wizardlm-2-8x22b';
 
+  // Amazon
   if (lower.includes('nova-pro')) return 'amazon/nova-pro-v1';
   if (lower.includes('nova-micro')) return 'amazon/nova-micro-v1';
   if (lower.includes('nova')) return 'amazon/nova-lite-v1';
 
+  // Cohere
   if (lower.includes('command-r-plus') || lower.includes('command-r+')) return 'cohere/command-r-plus-08-2024';
   if (lower.includes('command')) return 'cohere/command-r-08-2024';
 
-  if (lower.includes('kimi') || lower.includes('moonshot')) return 'moonshotai/moonshot-v1-128k';
   if (lower.includes('minimax')) return 'minimax/minimax-01';
   if (lower.includes('sonar') || lower.includes('perplexity')) return 'perplexity/sonar';
   if (lower.includes('hermes')) return 'nousresearch/hermes-3-llama-3.1-405b';
@@ -602,16 +695,36 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       modelUsed = mistralRes.modelUsed;
     } else if (apiKeys?.openrouter) {
       const targetModel = resolveOpenRouterModel(agent.model);
-      const openRouterRes = await callOpenAICompatible(
-        'https://openrouter.ai/api/v1/chat/completions',
-        apiKeys.openrouter,
-        targetModel,
-        chatMessages,
-        agent.temperature ?? 0.4
-      );
-      responseText = openRouterRes.text;
-      usage = openRouterRes.usageMetadata;
-      modelUsed = openRouterRes.modelUsed;
+      try {
+        const openRouterRes = await callOpenAICompatible(
+          'https://openrouter.ai/api/v1/chat/completions',
+          apiKeys.openrouter,
+          targetModel,
+          chatMessages,
+          agent.temperature ?? 0.4
+        );
+        responseText = openRouterRes.text;
+        usage = openRouterRes.usageMetadata;
+        modelUsed = openRouterRes.modelUsed;
+      } catch (openRouterErr: any) {
+        const errMsg = openRouterErr?.message || '';
+        if (errMsg.includes('not a valid model ID') || errMsg.includes('No endpoints found') || errMsg.includes('not found')) {
+          const altModel = getAlternativeOpenRouterModel(targetModel);
+          console.warn(`[Server] OpenRouter model ${targetModel} unavailable; automatically recovering with ${altModel}`);
+          const altRes = await callOpenAICompatible(
+            'https://openrouter.ai/api/v1/chat/completions',
+            apiKeys.openrouter,
+            altModel,
+            chatMessages,
+            agent.temperature ?? 0.4
+          );
+          responseText = altRes.text;
+          usage = altRes.usageMetadata;
+          modelUsed = altRes.modelUsed;
+        } else {
+          throw openRouterErr;
+        }
+      }
     } else if (apiKeys?.customEndpoint?.baseUrl && apiKeys.customEndpoint.apiKey) {
       const endpoint = `${apiKeys.customEndpoint.baseUrl.replace(/\/$/, '')}/chat/completions`;
       const customRes = await callOpenAICompatible(
