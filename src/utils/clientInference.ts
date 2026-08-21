@@ -69,11 +69,17 @@ export function resolveOpenRouterModel(modelName: string): string {
 
   const lower = m.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
 
-  // 1. xAI & SpaceXAI
+  // 1. xAI & SpaceXAI (Supports OpenRouter's newest grok-4.20, 4.6, 4.5, 4.3, 3, etc.)
+  if (lower.includes('grok-4.20-multi-agent') || lower.includes('grok-4-20-multi-agent')) return 'x-ai/grok-4.20:multi-agent';
+  if (lower.includes('grok-4.20') || lower.includes('grok-4-20')) return 'x-ai/grok-4.20';
+  if (lower.includes('grok-4.6') || lower.includes('grok-4-6')) return 'x-ai/grok-4.6';
+  if (lower.includes('grok-4.5') || lower.includes('grok-4-5')) return 'x-ai/grok-4.5';
+  if (lower.includes('grok-4.3') || lower.includes('grok-4-3')) return 'x-ai/grok-4.3';
+  if (lower.includes('grok-build') || lower.includes('grok-build-0.1') || lower.includes('grok-build-0-1')) return 'x-ai/grok-build-0.1';
   if (lower.includes('grok-3-mini')) return 'x-ai/grok-3-mini';
   if (lower.includes('grok-3')) return 'x-ai/grok-3';
   if (lower.includes('grok-vision') || lower.includes('grok-2-vision')) return 'x-ai/grok-2-vision-1212';
-  if (lower.includes('grok') || lower.includes('xai') || lower.includes('spacexai')) return 'x-ai/grok-2-1212';
+  if (lower.includes('grok') || lower.includes('xai') || lower.includes('spacexai')) return 'x-ai/grok-4.20';
 
   // 2. Anthropic Claude
   if (lower.includes('claude-3-7') || lower.includes('claude-3.7')) return 'anthropic/claude-3.7-sonnet';

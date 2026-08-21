@@ -80,7 +80,27 @@ export const MODEL_PRESETS: ModelPreset[] = [
     outputPricePerMillion: 0.60,
   },
 
-  // xAI (External Copy & Paste / Grok)
+  // xAI & SpaceXAI (External & OpenRouter Grok)
+  {
+    id: 'grok-4.20',
+    provider: 'xai',
+    brand: 'SpaceXAI',
+    name: 'Grok 4.20',
+    modelCode: 'x-ai/grok-4.20',
+    isExternal: true,
+    inputPricePerMillion: 1.25,
+    outputPricePerMillion: 2.50,
+  },
+  {
+    id: 'grok-4.6',
+    provider: 'xai',
+    brand: 'SpaceXAI',
+    name: 'Grok 4.6',
+    modelCode: 'x-ai/grok-4.6',
+    isExternal: true,
+    inputPricePerMillion: 1.50,
+    outputPricePerMillion: 3.00,
+  },
   {
     id: 'grok-3',
     provider: 'xai',

@@ -532,6 +532,9 @@ function calculatePricing(brand: string, name: string): { inPrice: number; outPr
   if (lower.includes('flash lite') || lower.includes('mini') || lower.includes('nano') || lower.includes('small') || lower.includes('micro') || lower.includes('8b') || lower.includes('7b')) {
     return { inPrice: 0.075, outPrice: 0.30 };
   }
+  if (lower.includes('grok 4.20') || lower.includes('grok 4.3')) return { inPrice: 1.25, outPrice: 2.50 };
+  if (lower.includes('grok 4.5') || lower.includes('grok 4.6')) return { inPrice: 1.50, outPrice: 3.00 };
+  if (lower.includes('grok build')) return { inPrice: 0.80, outPrice: 1.60 };
   if (lower.includes('opus') || lower.includes('gpt-5') || lower.includes('gpt-5.4 pro') || lower.includes('o3 pro') || lower.includes('o1-pro')) {
     return { inPrice: 5.00, outPrice: 20.00 };
   }
