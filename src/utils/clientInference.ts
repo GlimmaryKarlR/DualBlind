@@ -59,22 +59,95 @@ function resolveGoogleModel(modelName: string): string {
 }
 
 /**
- * Maps short model keys to OpenRouter identifier slugs
+ * Maps short model keys, catalog IDs, and display names to valid OpenRouter identifier slugs.
+ * OpenRouter strictly requires format: "author/model-name" (e.g. "x-ai/grok-2-1212", "deepseek/deepseek-r1").
  */
-function resolveOpenRouterModel(modelName: string): string {
+export function resolveOpenRouterModel(modelName: string): string {
   const m = (modelName || '').trim();
-  if (!m) return 'google/gemini-2.5-flash';
-  if (m.includes('/')) return m; // Already a full slug like deepseek/deepseek-r1
+  if (!m) return 'google/gemini-2.0-flash-001';
+  if (m.includes('/') && !m.includes(' ')) return m; // Already an exact provider slug
 
-  const lower = m.toLowerCase();
-  if (lower.includes('deepseek-r1') || lower === 'r1') return 'deepseek/deepseek-r1';
-  if (lower.includes('deepseek-v3') || lower === 'deepseek-chat') return 'deepseek/deepseek-chat';
-  if (lower.includes('llama-3.3') || lower.includes('llama-3-3')) return 'meta-llama/llama-3.3-70b-instruct';
-  if (lower.includes('qwen-2.5-72b') || lower.includes('qwen-72b')) return 'qwen/qwen-2.5-72b-instruct';
-  if (lower.includes('claude-3.7-sonnet') || lower.includes('claude-3-7')) return 'anthropic/claude-3.7-sonnet';
-  if (lower.includes('gpt-4o')) return 'openai/gpt-4o';
-  
-  return m;
+  const lower = m.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+
+  // 1. xAI & SpaceXAI
+  if (lower.includes('grok-3-mini')) return 'x-ai/grok-3-mini';
+  if (lower.includes('grok-3')) return 'x-ai/grok-3';
+  if (lower.includes('grok-vision') || lower.includes('grok-2-vision')) return 'x-ai/grok-2-vision-1212';
+  if (lower.includes('grok') || lower.includes('xai') || lower.includes('spacexai')) return 'x-ai/grok-2-1212';
+
+  // 2. Anthropic Claude
+  if (lower.includes('claude-3-7') || lower.includes('claude-3.7')) return 'anthropic/claude-3.7-sonnet';
+  if (lower.includes('claude-3-5-sonnet') || lower.includes('claude-3.5-sonnet') || lower.includes('sonnet-4') || lower.includes('sonnet-5') || lower.includes('sonnet-latest') || lower.includes('sonnet')) return 'anthropic/claude-3.5-sonnet';
+  if (lower.includes('claude-3-5-haiku') || lower.includes('claude-3.5-haiku') || lower.includes('haiku-4') || lower.includes('haiku-latest') || lower.includes('haiku')) return 'anthropic/claude-3.5-haiku';
+  if (lower.includes('opus') || lower.includes('fable')) return 'anthropic/claude-3-opus';
+  if (lower.includes('claude')) return 'anthropic/claude-3.5-sonnet';
+
+  // 3. DeepSeek
+  if (lower.includes('r1') || lower.includes('reasoner')) return 'deepseek/deepseek-r1';
+  if (lower.includes('v4') || lower.includes('v3') || lower.includes('deepseek-chat') || lower.includes('deepseek')) return 'deepseek/deepseek-chat';
+  if (lower.includes('coder')) return 'deepseek/deepseek-coder';
+
+  // 4. OpenAI
+  if (lower.includes('o3-mini') || lower.includes('o3')) return 'openai/o3-mini';
+  if (lower.includes('o1-pro') || lower.includes('o1-mini') || lower.includes('o1') || lower.includes('o4')) return 'openai/o1';
+  if (lower.includes('gpt-4o-mini') || lower.includes('audio-mini')) return 'openai/gpt-4o-mini';
+  if (lower.includes('gpt-4o') || lower.includes('gpt-5') || lower.includes('gpt-4') || lower.includes('chat-latest') || lower.includes('openai')) return 'openai/gpt-4o';
+  if (lower.includes('gpt-3.5')) return 'openai/gpt-3.5-turbo';
+
+  // 5. Meta Llama
+  if (lower.includes('llama-3.3') || lower.includes('llama-3-3') || lower.includes('llama-4') || lower.includes('maverick') || lower.includes('scout')) return 'meta-llama/llama-3.3-70b-instruct';
+  if (lower.includes('llama-3.1-405b') || lower.includes('llama-3-1-405b') || lower.includes('405b')) return 'meta-llama/llama-3.1-405b-instruct';
+  if (lower.includes('llama-3.1-70b') || lower.includes('llama-3-1-70b') || lower.includes('70b')) return 'meta-llama/llama-3.1-70b-instruct';
+  if (lower.includes('llama-3.1-8b') || lower.includes('llama-3-1-8b') || lower.includes('llama-3.2') || lower.includes('8b')) return 'meta-llama/llama-3.1-8b-instruct';
+  if (lower.includes('llama')) return 'meta-llama/llama-3.3-70b-instruct';
+
+  // 6. Qwen / Alibaba
+  if (lower.includes('coder') && lower.includes('qwen')) return 'qwen/qwen-2.5-coder-32b-instruct';
+  if (lower.includes('qwen2.5-72b') || lower.includes('qwen-2-5-72b') || lower.includes('qwen3') || lower.includes('qwen-plus') || lower.includes('qwen-max') || lower.includes('qwen')) return 'qwen/qwen-2.5-72b-instruct';
+
+  // 7. Mistral AI
+  if (lower.includes('codestral')) return 'mistralai/codestral-2501';
+  if (lower.includes('ministral')) return 'mistralai/ministral-8b';
+  if (lower.includes('nemo')) return 'mistralai/mistral-nemo';
+  if (lower.includes('small')) return 'mistralai/mistral-small-24b-instruct-2501';
+  if (lower.includes('mistral') || lower.includes('mixtral')) return 'mistralai/mistral-large-2411';
+
+  // 8. Google via OpenRouter
+  if (lower.includes('gemini-2.5-pro') || lower.includes('gemini-3.1-pro') || lower.includes('gemini-pro')) return 'google/gemini-pro-1.5';
+  if (lower.includes('gemini-2.0-flash') || lower.includes('gemini-3.7-flash') || lower.includes('gemini-flash') || lower.includes('gemini')) return 'google/gemini-2.0-flash-001';
+  if (lower.includes('gemma-2-27b') || lower.includes('gemma')) return 'google/gemma-2-27b-it';
+
+  // 9. Microsoft
+  if (lower.includes('phi-4') || lower.includes('phi4')) return 'microsoft/phi-4';
+  if (lower.includes('phi-3') || lower.includes('phi3')) return 'microsoft/phi-3.5-mini-128k-instruct';
+  if (lower.includes('wizardlm')) return 'microsoft/wizardlm-2-8x22b';
+
+  // 10. Amazon Nova
+  if (lower.includes('nova-pro') || lower.includes('nova-premier')) return 'amazon/nova-pro-v1';
+  if (lower.includes('nova-micro')) return 'amazon/nova-micro-v1';
+  if (lower.includes('nova')) return 'amazon/nova-lite-v1';
+
+  // 11. Cohere
+  if (lower.includes('command-r-plus') || lower.includes('command-r+')) return 'cohere/command-r-plus-08-2024';
+  if (lower.includes('command')) return 'cohere/command-r-08-2024';
+
+  // 12. Moonshot / Kimi
+  if (lower.includes('kimi') || lower.includes('moonshot')) return 'moonshotai/moonshot-v1-128k';
+
+  // 13. MiniMax
+  if (lower.includes('minimax')) return 'minimax/minimax-01';
+
+  // 14. Perplexity
+  if (lower.includes('sonar') || lower.includes('perplexity')) return 'perplexity/sonar';
+
+  // 15. Nous
+  if (lower.includes('hermes') || lower.includes('nous')) return 'nousresearch/hermes-3-llama-3.1-405b';
+
+  // 16. Z.ai / GLM
+  if (lower.includes('glm')) return 'thudm/glm-4-9b-chat';
+
+  // Fallback to general high-speed reasoning model
+  return 'google/gemini-2.0-flash-001';
 }
 
 /**

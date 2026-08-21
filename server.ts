@@ -224,6 +224,63 @@ function generateSyntheticTurnFallback(
   };
 }
 
+// Helper to map model identifiers to valid OpenRouter slugs
+function resolveOpenRouterModel(modelName: string): string {
+  const m = (modelName || '').trim();
+  if (!m) return 'google/gemini-2.0-flash-001';
+  if (m.includes('/') && !m.includes(' ')) return m;
+
+  const lower = m.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+
+  if (lower.includes('grok-3-mini')) return 'x-ai/grok-3-mini';
+  if (lower.includes('grok-3')) return 'x-ai/grok-3';
+  if (lower.includes('grok-vision') || lower.includes('grok-2-vision')) return 'x-ai/grok-2-vision-1212';
+  if (lower.includes('grok') || lower.includes('xai') || lower.includes('spacexai')) return 'x-ai/grok-2-1212';
+
+  if (lower.includes('claude-3-7') || lower.includes('claude-3.7')) return 'anthropic/claude-3.7-sonnet';
+  if (lower.includes('claude-3-5-sonnet') || lower.includes('sonnet')) return 'anthropic/claude-3.5-sonnet';
+  if (lower.includes('claude-3-5-haiku') || lower.includes('haiku')) return 'anthropic/claude-3.5-haiku';
+  if (lower.includes('opus')) return 'anthropic/claude-3-opus';
+
+  if (lower.includes('r1') || lower.includes('reasoner')) return 'deepseek/deepseek-r1';
+  if (lower.includes('deepseek') || lower.includes('v3') || lower.includes('v4')) return 'deepseek/deepseek-chat';
+
+  if (lower.includes('o3-mini') || lower.includes('o3')) return 'openai/o3-mini';
+  if (lower.includes('o1')) return 'openai/o1';
+  if (lower.includes('gpt-4o-mini')) return 'openai/gpt-4o-mini';
+  if (lower.includes('gpt-4o') || lower.includes('gpt-4') || lower.includes('gpt-5')) return 'openai/gpt-4o';
+
+  if (lower.includes('llama-3.3') || lower.includes('llama-4')) return 'meta-llama/llama-3.3-70b-instruct';
+  if (lower.includes('llama-3.1-405b') || lower.includes('405b')) return 'meta-llama/llama-3.1-405b-instruct';
+  if (lower.includes('llama-3.1-70b') || lower.includes('70b')) return 'meta-llama/llama-3.1-70b-instruct';
+  if (lower.includes('llama-3.1-8b') || lower.includes('8b')) return 'meta-llama/llama-3.1-8b-instruct';
+
+  if (lower.includes('qwen-coder') || (lower.includes('coder') && lower.includes('qwen'))) return 'qwen/qwen-2.5-coder-32b-instruct';
+  if (lower.includes('qwen')) return 'qwen/qwen-2.5-72b-instruct';
+
+  if (lower.includes('codestral')) return 'mistralai/codestral-2501';
+  if (lower.includes('ministral')) return 'mistralai/ministral-8b';
+  if (lower.includes('mistral') || lower.includes('mixtral')) return 'mistralai/mistral-large-2411';
+
+  if (lower.includes('phi-4')) return 'microsoft/phi-4';
+  if (lower.includes('phi-3')) return 'microsoft/phi-3.5-mini-128k-instruct';
+  if (lower.includes('wizardlm')) return 'microsoft/wizardlm-2-8x22b';
+
+  if (lower.includes('nova-pro')) return 'amazon/nova-pro-v1';
+  if (lower.includes('nova-micro')) return 'amazon/nova-micro-v1';
+  if (lower.includes('nova')) return 'amazon/nova-lite-v1';
+
+  if (lower.includes('command-r-plus') || lower.includes('command-r+')) return 'cohere/command-r-plus-08-2024';
+  if (lower.includes('command')) return 'cohere/command-r-08-2024';
+
+  if (lower.includes('kimi') || lower.includes('moonshot')) return 'moonshotai/moonshot-v1-128k';
+  if (lower.includes('minimax')) return 'minimax/minimax-01';
+  if (lower.includes('sonar') || lower.includes('perplexity')) return 'perplexity/sonar';
+  if (lower.includes('hermes')) return 'nousresearch/hermes-3-llama-3.1-405b';
+
+  return 'google/gemini-2.0-flash-001';
+}
+
 // Helper to call OpenAI-compatible APIs (DeepSeek, Moonshot, Qwen, xAI, OpenAI, Mistral, OpenRouter, Custom)
 async function callOpenAICompatible(
   endpointUrl: string,
@@ -536,15 +593,8 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       responseText = mistralRes.text;
       usage = mistralRes.usageMetadata;
       modelUsed = mistralRes.modelUsed;
-    } else if (apiKeys?.openrouter && (provider === 'meta' || provider === 'cohere' || provider === 'microsoft' || provider === 'amazon' || provider === 'custom')) {
-      const targetModel =
-        agent.model === 'llama-3-3-70b'
-          ? 'meta-llama/llama-3.3-70b-instruct'
-          : agent.model === 'command-r-plus'
-          ? 'cohere/command-r-plus-08-2024'
-          : agent.model === 'phi-4'
-          ? 'microsoft/phi-4'
-          : agent.model;
+    } else if (apiKeys?.openrouter) {
+      const targetModel = resolveOpenRouterModel(agent.model);
       const openRouterRes = await callOpenAICompatible(
         'https://openrouter.ai/api/v1/chat/completions',
         apiKeys.openrouter,
