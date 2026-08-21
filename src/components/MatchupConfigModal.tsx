@@ -163,7 +163,7 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
       model: preset.modelCode,
       provider: preset.provider,
       brand: preset.brand,
-      isManualExternal: preset.isExternal,
+      isManualExternal: false,
       customBrand: preset.provider === 'custom' ? current.customBrand || 'Custom' : undefined,
       customModel: preset.provider === 'custom' ? current.customModel || 'Custom LLM' : undefined,
     });
@@ -178,7 +178,7 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
       model: catalogModel.modelCode || catalogModel.id,
       provider: catalogModel.provider,
       brand: catalogModel.brand,
-      isManualExternal: catalogModel.isExternal,
+      isManualExternal: false,
       customBrand: catalogModel.provider === 'custom' ? catalogModel.brand : undefined,
       customModel: catalogModel.provider === 'custom' ? catalogModel.name : undefined,
     });

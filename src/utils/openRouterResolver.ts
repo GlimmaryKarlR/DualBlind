@@ -105,6 +105,21 @@ const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
   minimax: [
     'minimax/minimax-01',
   ],
+  tencent: [
+    'tencent/hunyuan-a13b-instruct',
+    'tencent/hy-mt2-1.8b',
+    'tencent/hy-mt2-30b-a3b',
+    'tencent/hy3',
+    'tencent/hy3-preview',
+  ],
+  stepfun: [
+    'stepfun/step-3.5-flash',
+    'stepfun/step-3.7-flash',
+  ],
+  xiaomi: [
+    'xiaomi/mimo-v2.5',
+    'xiaomi/mimo-v2.5-pro',
+  ],
   thudm: [
     'thudm/glm-4-9b-chat',
   ],
@@ -189,19 +204,29 @@ function detectCreator(raw: string): string | null {
   if (lower.includes('moonshot') || lower.includes('kimi')) return 'moonshotai';
   if (lower.includes('xai') || lower.includes('spacexai') || lower.includes('grok')) return 'x-ai';
   if (lower.includes('anthropic') || lower.includes('claude')) return 'anthropic';
-  if (lower.includes('openai') || lower.includes('gpt') || lower.includes('o1') || lower.includes('o3')) return 'openai';
+  if (lower.includes('openai') || lower.includes('gpt') || lower.includes('o1') || lower.includes('o3') || lower.includes('o4') || lower.includes('o5')) return 'openai';
   if (lower.includes('deepseek')) return 'deepseek';
   if (lower.includes('meta') || lower.includes('llama')) return 'meta-llama';
   if (lower.includes('qwen') || lower.includes('alibaba')) return 'qwen';
-  if (lower.includes('mistral') || lower.includes('codestral') || lower.includes('ministral')) return 'mistralai';
+  if (lower.includes('mistral') || lower.includes('codestral') || lower.includes('ministral') || lower.includes('mixtral')) return 'mistralai';
   if (lower.includes('google') || lower.includes('gemini') || lower.includes('gemma')) return 'google';
   if (lower.includes('amazon') || lower.includes('nova')) return 'amazon';
-  if (lower.includes('microsoft') || lower.includes('phi')) return 'microsoft';
+  if (lower.includes('microsoft') || lower.includes('phi') || lower.includes('wizardlm')) return 'microsoft';
   if (lower.includes('cohere') || lower.includes('command')) return 'cohere';
   if (lower.includes('minimax')) return 'minimax';
+  if (lower.includes('tencent') || lower.includes('hunyuan') || lower.includes('hy-mt2') || lower.includes('hy3')) return 'tencent';
+  if (lower.includes('stepfun') || lower.includes('step 3') || lower.includes('step-3')) return 'stepfun';
+  if (lower.includes('xiaomi') || lower.includes('mimo')) return 'xiaomi';
   if (lower.includes('glm') || lower.includes('z.ai') || lower.includes('thudm')) return 'thudm';
   if (lower.includes('perplexity') || lower.includes('sonar')) return 'perplexity';
   if (lower.includes('hermes') || lower.includes('nous')) return 'nousresearch';
+  if (lower.includes('thedrummer') || lower.includes('cydonia') || lower.includes('rocinante')) return 'thedrummer';
+  if (lower.includes('upstage') || lower.includes('solar')) return 'upstage';
+  if (lower.includes('reka')) return 'reka';
+  if (lower.includes('sakana')) return 'sakana';
+  if (lower.includes('sao10k')) return 'sao10k';
+  if (lower.includes('writer') || lower.includes('palmyra')) return 'writer';
+  if (lower.includes('bytedance') || lower.includes('seed')) return 'bytedance';
   return null;
 }
 
@@ -232,8 +257,8 @@ export function resolveOpenRouterModel(modelInput: string): string {
   }
 
   // 3. Match by score: count how many tokens match the candidate slug
-  let bestSlug = candidates[0] || 'google/gemini-2.0-flash-001';
-  let highestScore = -1;
+  let bestSlug = '';
+  let highestScore = 0;
 
   for (const slug of candidates) {
     const slugTokens = tokenize(slug);
@@ -261,12 +286,30 @@ export function resolveOpenRouterModel(modelInput: string): string {
     }
   }
 
-  // 4. Default flagship fallbacks if no specific tokens matched strongly
-  if (highestScore <= 0 && creator && CURATED_OPENROUTER_MODELS[creator]) {
+  if (bestSlug && highestScore > 0) {
+    return bestSlug;
+  }
+
+  // 4. Default flagship fallbacks for the detected creator
+  if (creator && CURATED_OPENROUTER_MODELS[creator]) {
     return CURATED_OPENROUTER_MODELS[creator][0];
   }
 
-  return bestSlug;
+  // 5. If creator is known but no curated models list, form a clean slug
+  if (creator) {
+    const modelPart = inputTokens.filter((t) => t !== creator).join('-');
+    return `${creator}/${modelPart || 'model'}`;
+  }
+
+  // 6. If raw input has Brand: Model format, construct a clean brand/model slug
+  if (input.includes(':')) {
+    const parts = input.split(':');
+    const b = parts[0].trim().toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+    const m = parts.slice(1).join('-').trim().toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+    return `${b}/${m}`;
+  }
+
+  return input.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
 }
 
 /**

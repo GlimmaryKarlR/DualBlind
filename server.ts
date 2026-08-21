@@ -296,6 +296,33 @@ function resolveOpenRouterModel(modelName: string): string {
   if (lower.includes('command-r-plus') || lower.includes('command-r+')) return 'cohere/command-r-plus-08-2024';
   if (lower.includes('command')) return 'cohere/command-r-08-2024';
 
+  // Tencent
+  if (lower.includes('tencent') || lower.includes('hunyuan') || lower.includes('hy-mt2') || lower.includes('hy3')) {
+    if (lower.includes('hy3-preview') || lower.includes('preview')) return 'tencent/hy3-preview';
+    if (lower.includes('hy3')) return 'tencent/hy3';
+    if (lower.includes('1.8b')) return 'tencent/hy-mt2-1.8b';
+    if (lower.includes('30b')) return 'tencent/hy-mt2-30b-a3b';
+    return 'tencent/hunyuan-a13b-instruct';
+  }
+
+  // StepFun
+  if (lower.includes('stepfun') || lower.includes('step-3') || lower.includes('step 3')) {
+    if (lower.includes('3.7')) return 'stepfun/step-3.7-flash';
+    return 'stepfun/step-3.5-flash';
+  }
+
+  // Xiaomi
+  if (lower.includes('xiaomi') || lower.includes('mimo')) {
+    if (lower.includes('pro')) return 'xiaomi/mimo-v2.5-pro';
+    return 'xiaomi/mimo-v2.5';
+  }
+
+  // Z.ai / GLM / THUDM
+  if (lower.includes('glm') || lower.includes('z-ai') || lower.includes('z.ai')) {
+    if (lower.includes('glm-5') || lower.includes('glm 5')) return 'thudm/glm-4-9b-chat';
+    return 'thudm/glm-4-9b-chat';
+  }
+
   if (lower.includes('minimax')) return 'minimax/minimax-01';
   if (lower.includes('sonar') || lower.includes('perplexity')) return 'perplexity/sonar';
   if (lower.includes('hermes')) return 'nousresearch/hermes-3-llama-3.1-405b';
