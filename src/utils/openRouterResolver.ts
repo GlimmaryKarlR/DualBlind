@@ -270,14 +270,72 @@ export function resolveOpenRouterModel(modelInput: string): string {
 }
 
 /**
- * Finds alternative fallback models if OpenRouter reports a specific model as invalid/no endpoints
+ * Extracts text robustly across all OpenAI and OpenRouter response variations
+ * (including reasoning tokens, thoughts, content arrays, refusals, and tool arguments).
  */
-export function getAlternativeOpenRouterModel(failedModel: string): string {
-  const creator = detectCreator(failedModel);
-  if (creator && CURATED_OPENROUTER_MODELS[creator]) {
-    // Find the first curated model that is not the failed one
-    const alt = CURATED_OPENROUTER_MODELS[creator].find((s) => s !== failedModel);
-    if (alt) return alt;
+export function extractTextFromOpenAIResponse(data: any): string {
+  if (!data) return '';
+
+  if (typeof data.choices === 'object' && Array.isArray(data.choices)) {
+    for (const choice of data.choices) {
+      if (!choice) continue;
+
+      const msg = choice.message || choice.delta;
+      if (msg) {
+        // 1. Direct string content
+        if (typeof msg.content === 'string' && msg.content.trim()) {
+          return msg.content;
+        }
+
+        // 2. Content array (e.g. [{ type: 'text', text: '...' }])
+        if (Array.isArray(msg.content)) {
+          const joined = msg.content
+            .map((part: any) =>
+              typeof part === 'string'
+                ? part
+                : part?.text || part?.content || part?.value || ''
+            )
+            .filter(Boolean)
+            .join('\n');
+          if (joined.trim()) return joined;
+        }
+
+        // 3. Reasoning / Thought tags (DeepSeek R1, QwQ, Kimi Thinking, Grok reasoning)
+        const reasoning =
+          msg.reasoning ||
+          msg.reasoning_content ||
+          msg.thought ||
+          msg.reasoning_text;
+        if (typeof reasoning === 'string' && reasoning.trim()) {
+          return `<think>\n${reasoning}\n</think>`;
+        }
+
+        // 4. Refusal message
+        if (typeof msg.refusal === 'string' && msg.refusal.trim()) {
+          return msg.refusal;
+        }
+
+        // 5. Tool calls / function argument output
+        if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+          const toolArgs = msg.tool_calls
+            .map((tc: any) => tc?.function?.arguments || tc?.function?.name || '')
+            .filter(Boolean)
+            .join('\n');
+          if (toolArgs.trim()) return toolArgs;
+        }
+      }
+
+      // 6. Direct choice.text (legacy completion format)
+      if (typeof choice.text === 'string' && choice.text.trim()) {
+        return choice.text;
+      }
+    }
   }
-  return 'google/gemini-2.0-flash-001';
+
+  // Fallback top-level fields
+  if (typeof data.output === 'string' && data.output.trim()) return data.output;
+  if (typeof data.response === 'string' && data.response.trim()) return data.response;
+  if (typeof data.text === 'string' && data.text.trim()) return data.text;
+
+  return '';
 }

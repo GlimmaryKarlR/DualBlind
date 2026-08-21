@@ -224,84 +224,6 @@ function generateSyntheticTurnFallback(
   };
 }
 
-// Universal fallback models for OpenRouter
-const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
-  moonshotai: [
-    'moonshotai/kimi-k3',
-    'moonshotai/kimi-k2.5',
-    'moonshotai/kimi-k2-thinking',
-    'moonshotai/kimi-k2.7-code',
-  ],
-  'x-ai': [
-    'x-ai/grok-4.20',
-    'x-ai/grok-4.20:multi-agent',
-    'x-ai/grok-4.6',
-    'x-ai/grok-4.5',
-    'x-ai/grok-4.3',
-    'x-ai/grok-build-0.1',
-    'x-ai/grok-3',
-    'x-ai/grok-3-mini',
-  ],
-  anthropic: [
-    'anthropic/claude-3.7-sonnet',
-    'anthropic/claude-3.5-sonnet',
-    'anthropic/claude-3-haiku',
-    'anthropic/claude-3-opus',
-  ],
-  openai: [
-    'openai/gpt-4o',
-    'openai/gpt-4o-mini',
-    'openai/o3-mini',
-    'openai/o1',
-  ],
-  deepseek: [
-    'deepseek/deepseek-r1',
-    'deepseek/deepseek-chat',
-  ],
-  'meta-llama': [
-    'meta-llama/llama-3.3-70b-instruct',
-    'meta-llama/llama-3.1-405b-instruct',
-  ],
-  qwen: [
-    'qwen/qwen-2.5-72b-instruct',
-    'qwen/qwen-2.5-coder-32b-instruct',
-  ],
-  mistralai: [
-    'mistralai/mistral-large-2411',
-    'mistralai/codestral-2501',
-  ],
-  google: [
-    'google/gemini-2.0-flash-001',
-    'google/gemini-pro-1.5',
-  ],
-};
-
-function detectCreator(raw: string): string | null {
-  const lower = raw.toLowerCase();
-  if (lower.includes('moonshot') || lower.includes('kimi')) return 'moonshotai';
-  if (lower.includes('xai') || lower.includes('spacexai') || lower.includes('grok')) return 'x-ai';
-  if (lower.includes('anthropic') || lower.includes('claude')) return 'anthropic';
-  if (lower.includes('openai') || lower.includes('gpt') || lower.includes('o1') || lower.includes('o3')) return 'openai';
-  if (lower.includes('deepseek')) return 'deepseek';
-  if (lower.includes('meta') || lower.includes('llama')) return 'meta-llama';
-  if (lower.includes('qwen') || lower.includes('alibaba')) return 'qwen';
-  if (lower.includes('mistral') || lower.includes('codestral') || lower.includes('ministral')) return 'mistralai';
-  if (lower.includes('google') || lower.includes('gemini') || lower.includes('gemma')) return 'google';
-  if (lower.includes('amazon') || lower.includes('nova')) return 'amazon';
-  if (lower.includes('microsoft') || lower.includes('phi')) return 'microsoft';
-  if (lower.includes('cohere') || lower.includes('command')) return 'cohere';
-  return null;
-}
-
-function getAlternativeOpenRouterModel(failedModel: string): string {
-  const creator = detectCreator(failedModel);
-  if (creator && CURATED_OPENROUTER_MODELS[creator]) {
-    const alt = CURATED_OPENROUTER_MODELS[creator].find((s) => s !== failedModel);
-    if (alt) return alt;
-  }
-  return 'google/gemini-2.0-flash-001';
-}
-
 // Helper to map model identifiers to valid OpenRouter slugs
 function resolveOpenRouterModel(modelName: string): string {
   const m = (modelName || '').trim();
@@ -381,6 +303,67 @@ function resolveOpenRouterModel(modelName: string): string {
   return 'google/gemini-2.0-flash-001';
 }
 
+// Helper to extract text across all OpenAI / OpenRouter response formats
+function extractTextFromOpenAIResponse(data: any): string {
+  if (!data) return '';
+
+  if (typeof data.choices === 'object' && Array.isArray(data.choices)) {
+    for (const choice of data.choices) {
+      if (!choice) continue;
+
+      const msg = choice.message || choice.delta;
+      if (msg) {
+        if (typeof msg.content === 'string' && msg.content.trim()) {
+          return msg.content;
+        }
+
+        if (Array.isArray(msg.content)) {
+          const joined = msg.content
+            .map((part: any) =>
+              typeof part === 'string'
+                ? part
+                : part?.text || part?.content || part?.value || ''
+            )
+            .filter(Boolean)
+            .join('\n');
+          if (joined.trim()) return joined;
+        }
+
+        const reasoning =
+          msg.reasoning ||
+          msg.reasoning_content ||
+          msg.thought ||
+          msg.reasoning_text;
+        if (typeof reasoning === 'string' && reasoning.trim()) {
+          return `<think>\n${reasoning}\n</think>`;
+        }
+
+        if (typeof msg.refusal === 'string' && msg.refusal.trim()) {
+          return msg.refusal;
+        }
+
+        if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+          const toolArgs = msg.tool_calls
+            .map((tc: any) => tc?.function?.arguments || tc?.function?.name || '')
+            .filter(Boolean)
+            .join('\n');
+          if (toolArgs.trim()) return toolArgs;
+        }
+      }
+
+      if (typeof choice.text === 'string' && choice.text.trim()) {
+        return choice.text;
+      }
+    }
+  }
+
+  if (typeof data.output === 'string' && data.output.trim()) return data.output;
+  if (typeof data.response === 'string' && data.response.trim()) return data.response;
+  if (typeof data.text === 'string' && data.text.trim()) return data.text;
+
+  return '';
+}
+
 // Helper to call OpenAI-compatible APIs (DeepSeek, Moonshot, Qwen, xAI, OpenAI, Mistral, OpenRouter, Custom)
 async function callOpenAICompatible(
   endpointUrl: string,
@@ -408,19 +391,26 @@ async function callOpenAICompatible(
   }
 
   const data: any = await res.json();
-  const choice = data.choices && data.choices[0];
-  const messageContent = choice?.message?.content || choice?.text || '';
+  const text = extractTextFromOpenAIResponse(data);
+
+  if (!text.trim()) {
+    if (data?.error?.message) {
+      throw new Error(data.error.message);
+    }
+    throw new Error(`Model ${modelName} returned an empty response body.`);
+  }
+
   const inputToks = data.usage?.prompt_tokens || Math.max(80, Math.round(JSON.stringify(messages).length / 4));
-  const outputToks = data.usage?.completion_tokens || Math.max(40, Math.round(messageContent.length / 4));
+  const outputToks = data.usage?.completion_tokens || Math.max(40, Math.round(text.length / 4));
 
   return {
-    text: messageContent,
+    text,
     usageMetadata: {
       promptTokenCount: inputToks,
       candidatesTokenCount: outputToks,
       totalTokenCount: inputToks + outputToks,
     },
-    modelUsed: modelName,
+    modelUsed: data.model || modelName,
   };
 }
 
@@ -695,36 +685,16 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       modelUsed = mistralRes.modelUsed;
     } else if (apiKeys?.openrouter) {
       const targetModel = resolveOpenRouterModel(agent.model);
-      try {
-        const openRouterRes = await callOpenAICompatible(
-          'https://openrouter.ai/api/v1/chat/completions',
-          apiKeys.openrouter,
-          targetModel,
-          chatMessages,
-          agent.temperature ?? 0.4
-        );
-        responseText = openRouterRes.text;
-        usage = openRouterRes.usageMetadata;
-        modelUsed = openRouterRes.modelUsed;
-      } catch (openRouterErr: any) {
-        const errMsg = openRouterErr?.message || '';
-        if (errMsg.includes('not a valid model ID') || errMsg.includes('No endpoints found') || errMsg.includes('not found')) {
-          const altModel = getAlternativeOpenRouterModel(targetModel);
-          console.warn(`[Server] OpenRouter model ${targetModel} unavailable; automatically recovering with ${altModel}`);
-          const altRes = await callOpenAICompatible(
-            'https://openrouter.ai/api/v1/chat/completions',
-            apiKeys.openrouter,
-            altModel,
-            chatMessages,
-            agent.temperature ?? 0.4
-          );
-          responseText = altRes.text;
-          usage = altRes.usageMetadata;
-          modelUsed = altRes.modelUsed;
-        } else {
-          throw openRouterErr;
-        }
-      }
+      const openRouterRes = await callOpenAICompatible(
+        'https://openrouter.ai/api/v1/chat/completions',
+        apiKeys.openrouter,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = openRouterRes.text;
+      usage = openRouterRes.usageMetadata;
+      modelUsed = openRouterRes.modelUsed;
     } else if (apiKeys?.customEndpoint?.baseUrl && apiKeys.customEndpoint.apiKey) {
       const endpoint = `${apiKeys.customEndpoint.baseUrl.replace(/\/$/, '')}/chat/completions`;
       const customRes = await callOpenAICompatible(

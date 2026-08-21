@@ -1,5 +1,11 @@
 import { AgentConfig, BenchmarkProblem, ChatTurn, ProviderApiKeys } from '../types/benchmark';
 import { calculateTokenCost } from './formatters';
+import {
+  resolveOpenRouterModel,
+  extractTextFromOpenAIResponse,
+} from './openRouterResolver';
+
+export { resolveOpenRouterModel, extractTextFromOpenAIResponse };
 
 export interface TurnGenerationResult {
   content: string;
@@ -57,13 +63,6 @@ function resolveGoogleModel(modelName: string): string {
   }
   return 'gemini-3.7-flash';
 }
-
-import {
-  resolveOpenRouterModel,
-  getAlternativeOpenRouterModel,
-} from './openRouterResolver';
-
-export { resolveOpenRouterModel };
 
 
 /**
@@ -158,20 +157,12 @@ async function callOpenAICompatibleDirect(
   }
 
   const data = await response.json();
-  const choice = data.choices?.[0];
-  const message = choice?.message;
-
-  // Extract regular content or fallback to reasoning output (DeepSeek-R1, Novita, etc.)
-  let text = message?.content || choice?.text || '';
-
-  if (!text.trim() && message) {
-    const reasoning = message.reasoning || message.reasoning_content;
-    if (reasoning) {
-      text = `<think>\n${reasoning}\n</think>`;
-    }
-  }
+  const text = extractTextFromOpenAIResponse(data);
 
   if (!text.trim()) {
+    if (data?.error?.message) {
+      throw new Error(data.error.message);
+    }
     throw new Error(`Model ${modelName} returned an empty response body.`);
   }
 
@@ -456,40 +447,19 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
     outputTokens = res.outputTokens;
     modelUsed = res.modelUsed;
   } else if (apiKeys.openrouter) {
-    // OpenRouter fallback with auto-recovery
+    // OpenRouter inference - directly surface errors if model crashes or fails
     const targetModel = resolveOpenRouterModel(agent.model);
-    try {
-      const res = await callOpenAICompatibleDirect(
-        'https://openrouter.ai/api/v1/chat/completions',
-        apiKeys.openrouter,
-        targetModel,
-        chatMessages,
-        agent.temperature ?? 0.4
-      );
-      textResult = res.text;
-      inputTokens = res.inputTokens;
-      outputTokens = res.outputTokens;
-      modelUsed = res.modelUsed;
-    } catch (openRouterErr: any) {
-      const errMsg = openRouterErr?.message || '';
-      if (errMsg.includes('not a valid model ID') || errMsg.includes('No endpoints found') || errMsg.includes('not found')) {
-        const altModel = getAlternativeOpenRouterModel(targetModel);
-        console.warn(`OpenRouter model ${targetModel} unavailable; automatically recovering with ${altModel}`);
-        const altRes = await callOpenAICompatibleDirect(
-          'https://openrouter.ai/api/v1/chat/completions',
-          apiKeys.openrouter,
-          altModel,
-          chatMessages,
-          agent.temperature ?? 0.4
-        );
-        textResult = altRes.text;
-        inputTokens = altRes.inputTokens;
-        outputTokens = altRes.outputTokens;
-        modelUsed = altRes.modelUsed;
-      } else {
-        throw openRouterErr;
-      }
-    }
+    const res = await callOpenAICompatibleDirect(
+      'https://openrouter.ai/api/v1/chat/completions',
+      apiKeys.openrouter,
+      targetModel,
+      chatMessages,
+      agent.temperature ?? 0.4
+    );
+    textResult = res.text;
+    inputTokens = res.inputTokens;
+    outputTokens = res.outputTokens;
+    modelUsed = res.modelUsed;
   } else if (apiKeys.customEndpoint?.baseUrl && apiKeys.customEndpoint.apiKey) {
     const endpoint = `${apiKeys.customEndpoint.baseUrl.replace(/\/$/, '')}/chat/completions`;
     const res = await callOpenAICompatibleDirect(
