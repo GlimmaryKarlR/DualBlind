@@ -195,6 +195,21 @@ async function callAnthropicDirect(
       content: m.content,
     }));
 
+  // Normalize model name for Anthropic Direct API endpoint
+  let resolvedModel = 'claude-3-7-sonnet-20250219';
+  const mLower = (modelName || '').toLowerCase();
+  if (mLower.includes('haiku')) {
+    resolvedModel = 'claude-3-5-haiku-20241022';
+  } else if (mLower.includes('opus')) {
+    resolvedModel = 'claude-3-opus-20240229';
+  } else if (mLower.includes('claude-3-5-sonnet') || mLower.includes('claude-3.5-sonnet')) {
+    resolvedModel = 'claude-3-5-sonnet-20241022';
+  } else if (mLower.startsWith('claude-3-') || mLower.startsWith('claude-2')) {
+    resolvedModel = modelName;
+  } else {
+    resolvedModel = 'claude-3-7-sonnet-20250219';
+  }
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -204,7 +219,7 @@ async function callAnthropicDirect(
       'dangerously-allow-browser': 'true',
     },
     body: JSON.stringify({
-      model: modelName || 'claude-3-7-sonnet-20250219',
+      model: resolvedModel,
       max_tokens: 2048,
       temperature: Math.min(Math.max(temperature, 0), 1.0),
       system: systemInstruction,

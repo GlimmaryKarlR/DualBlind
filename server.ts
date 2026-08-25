@@ -251,11 +251,34 @@ function resolveOpenRouterModel(modelName: string): string {
   if (lower.includes('grok-vision') || lower.includes('grok-2-vision')) return 'x-ai/grok-2-vision-1212';
   if (lower.includes('grok') || lower.includes('xai') || lower.includes('spacexai')) return 'x-ai/grok-4.20';
 
-  // Anthropic
-  if (lower.includes('claude-3-7') || lower.includes('claude-3.7')) return 'anthropic/claude-3.7-sonnet';
-  if (lower.includes('claude-3-5-sonnet') || lower.includes('sonnet')) return 'anthropic/claude-3.5-sonnet';
-  if (lower.includes('haiku')) return 'anthropic/claude-3-haiku';
-  if (lower.includes('opus')) return 'anthropic/claude-3-opus';
+  // Anthropic Claude
+  if (lower.includes('fable')) return lower.includes('batch') ? 'anthropic/claude-fable-5:batch' : 'anthropic/claude-fable-5';
+  if (lower.includes('sonnet-5') || lower.includes('sonnet 5')) return lower.includes('batch') ? 'anthropic/claude-sonnet-5:batch' : 'anthropic/claude-sonnet-5';
+  if (lower.includes('opus-5') || lower.includes('opus 5')) {
+    if (lower.includes('fast')) return 'anthropic/claude-opus-5-fast';
+    if (lower.includes('batch')) return 'anthropic/claude-opus-5:batch';
+    return 'anthropic/claude-opus-5';
+  }
+  if (lower.includes('opus-4.8') || lower.includes('opus-4-8')) return lower.includes('fast') ? 'anthropic/claude-opus-4.8-fast' : lower.includes('batch') ? 'anthropic/claude-opus-4.8:batch' : 'anthropic/claude-opus-4.8';
+  if (lower.includes('opus-4.7') || lower.includes('opus-4-7')) return lower.includes('fast') ? 'anthropic/claude-opus-4.7-fast' : lower.includes('batch') ? 'anthropic/claude-opus-4.7:batch' : 'anthropic/claude-opus-4.7';
+  if (lower.includes('sonnet-4.6') || lower.includes('sonnet-4-6')) return lower.includes('batch') ? 'anthropic/claude-sonnet-4.6:batch' : 'anthropic/claude-sonnet-4.6';
+  if (lower.includes('opus-4.6') || lower.includes('opus-4-6')) return lower.includes('batch') ? 'anthropic/claude-opus-4.6:batch' : 'anthropic/claude-opus-4.6';
+  if (lower.includes('sonnet-4.5') || lower.includes('sonnet-4-5') || lower.includes('claude-3-5-sonnet') || lower.includes('claude-3.5-sonnet')) {
+    return lower.includes('batch') ? 'anthropic/claude-sonnet-4.5:batch' : 'anthropic/claude-sonnet-4.5';
+  }
+  if (lower.includes('haiku-4.5') || lower.includes('haiku-4-5') || lower.includes('claude-3-5-haiku') || lower.includes('claude-3.5-haiku')) {
+    return lower.includes('batch') ? 'anthropic/claude-haiku-4.5:batch' : 'anthropic/claude-haiku-4.5';
+  }
+  if (lower.includes('opus-4.5') || lower.includes('opus-4-5')) return lower.includes('batch') ? 'anthropic/claude-opus-4.5:batch' : 'anthropic/claude-opus-4.5';
+  if (lower.includes('sonnet-4') || lower.includes('sonnet-4-0')) return 'anthropic/claude-sonnet-4';
+  if (lower.includes('opus-4.1') || lower.includes('opus-4-1')) return lower.includes('batch') ? 'anthropic/claude-opus-4.1:batch' : 'anthropic/claude-opus-4.1';
+  if (lower.includes('opus-4') || lower.includes('opus-4-0')) return 'anthropic/claude-opus-4';
+  if (lower.includes('3-haiku') || lower.includes('3.0-haiku')) return 'anthropic/claude-3-haiku';
+  if (lower.includes('haiku')) return 'anthropic/claude-haiku-4.5';
+  if (lower.includes('opus')) return 'anthropic/claude-opus-5';
+  if (lower.includes('sonnet') || lower.includes('claude-3-7') || lower.includes('claude-3.7') || lower.includes('claude') || lower.includes('anthropic')) {
+    return 'anthropic/claude-sonnet-5';
+  }
 
   // DeepSeek
   if (lower.includes('r1') || lower.includes('reasoner')) return 'deepseek/deepseek-r1';
@@ -457,6 +480,21 @@ async function callAnthropicMessages(
       content: m.content,
     }));
 
+  // Normalize model name for Anthropic Direct API endpoint
+  let resolvedModel = 'claude-3-7-sonnet-20250219';
+  const mLower = (modelName || '').toLowerCase();
+  if (mLower.includes('haiku')) {
+    resolvedModel = 'claude-3-5-haiku-20241022';
+  } else if (mLower.includes('opus')) {
+    resolvedModel = 'claude-3-opus-20240229';
+  } else if (mLower.includes('claude-3-5-sonnet') || mLower.includes('claude-3.5-sonnet')) {
+    resolvedModel = 'claude-3-5-sonnet-20241022';
+  } else if (mLower.startsWith('claude-3-') || mLower.startsWith('claude-2')) {
+    resolvedModel = modelName;
+  } else {
+    resolvedModel = 'claude-3-7-sonnet-20250219';
+  }
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -465,7 +503,7 @@ async function callAnthropicMessages(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: modelName.includes('claude') ? modelName : 'claude-3-7-sonnet-20250219',
+      model: resolvedModel,
       max_tokens: 2048,
       system: systemInstruction,
       messages: anthropicMessages,

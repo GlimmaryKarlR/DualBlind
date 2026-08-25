@@ -97,8 +97,8 @@ export const PROVIDER_METAS: ProviderMeta[] = [
     placeholder: 'sk-ant-api03-...',
     portalUrl: 'https://console.anthropic.com/settings/keys',
     portalName: 'Anthropic Console',
-    helpText: 'Claude 3.7 Sonnet, Claude 3.5 Sonnet, and Haiku.',
-    recommendedModels: ['claude-3-7-sonnet', 'claude-3-5-sonnet', 'claude-3-haiku'],
+    helpText: 'Claude Fable 5, Claude Sonnet 5, Claude Opus 5, and Claude Haiku 4.5.',
+    recommendedModels: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5'],
   },
   {
     id: 'mistral',
