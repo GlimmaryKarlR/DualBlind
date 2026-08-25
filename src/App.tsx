@@ -13,7 +13,7 @@ import {
   ProviderApiKeys,
 } from './types/benchmark';
 import { getStoredApiKeys, countConfiguredKeys } from './utils/tokenStorage';
-import { getStoredRuns, saveRunToStorage } from './utils/runStorage';
+import { getStoredRuns, saveRunUniversal, subscribeUniversalLeaderboard } from './utils/runStorage';
 import { generateBenchmarkTurnHybrid } from './utils/hybridTurnGenerator';
 import { computeVerificationClient } from './utils/verification';
 import { BENCHMARK_PROBLEMS } from './data/benchmarkProblems';
@@ -140,8 +140,16 @@ export default function App() {
   const metricsRef = useRef(metrics);
   metricsRef.current = metrics;
 
-  // Load Leaderboard Runs from API (with seamless local storage fallback)
+  // Load & Subscribe to Universal Leaderboard in Real Time
   useEffect(() => {
+    // 1. Set up real-time listener to Firestore
+    const unsubscribe = subscribeUniversalLeaderboard((runs) => {
+      if (Array.isArray(runs) && runs.length > 0) {
+        setRunsHistory(runs);
+      }
+    });
+
+    // 2. Fetch backup from backend endpoint if available
     fetch('/api/leaderboard/runs')
       .then((res) => {
         if (!res.ok) return null;
@@ -160,8 +168,12 @@ export default function App() {
         }
       })
       .catch(() => {
-        // Safe fallback on static deployments
+        // Safe fallback
       });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // Reset Arena State
@@ -860,26 +872,19 @@ export default function App() {
     };
 
     try {
-      // Always save locally first so user never loses their data on static/Vercel hosts
-      const updated = saveRunToStorage(record);
-      setRunsHistory(updated);
       setIsRunSaved(true);
+      // Save universally (Firestore cloud database + local storage cache)
+      const updated = await saveRunUniversal(record);
+      setRunsHistory(updated);
 
-      // Attempt server sync if backend is active
-      const res = await fetch('/api/leaderboard/save-run', {
+      // Also notify backend endpoint if online
+      fetch('/api/leaderboard/save-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record),
-      });
-
-      if (res.ok) {
-        const updatedList = await fetch('/api/leaderboard/runs').then((r) => r.json());
-        if (Array.isArray(updatedList) && updatedList.length > 0) {
-          setRunsHistory(updatedList);
-        }
-      }
+      }).catch(() => {});
     } catch (e) {
-      console.warn('Backend leaderboard sync skipped, saved to browser storage:', e);
+      console.warn('Leaderboard universal save notice:', e);
       setIsRunSaved(true);
     }
   };

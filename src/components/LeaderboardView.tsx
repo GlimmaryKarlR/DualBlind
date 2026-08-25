@@ -19,6 +19,7 @@ import {
   X,
   Flame,
   Activity,
+  Globe,
 } from 'lucide-react';
 import { BenchmarkRunRecord, TopicCategory } from '../types/benchmark';
 import { formatTime, formatNumber, formatCurrency, getTierBadge, getTeamFunctionalityBadge, getAgentMakeAndModel } from '../utils/formatters';
@@ -84,6 +85,27 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Universal Cloud Sync Notice */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-xs text-indigo-900 shadow-xs dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-200">
+        <div className="flex items-center gap-2">
+          <div className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          </div>
+          <span className="font-semibold flex items-center gap-1.5">
+            <Globe className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+            Universal Cloud Leaderboard
+          </span>
+          <span className="text-slate-700 dark:text-slate-400">|</span>
+          <span className="text-slate-700 dark:text-slate-400">
+            Real-time multi-user synchronization active across all devices & sessions
+          </span>
+        </div>
+        <div className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400">
+          Auto-synced via Firestore
+        </div>
+      </div>
+
       {/* Top Aggregate Stats Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">

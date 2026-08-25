@@ -980,12 +980,31 @@ app.post('/api/benchmark/save-run', (req, res) => {
   }
 });
 
+// Alias for save-run
+app.post('/api/leaderboard/save-run', (req, res) => {
+  try {
+    const record = req.body;
+    savedBenchmarkRuns.unshift(record);
+    if (savedBenchmarkRuns.length > 150) {
+      savedBenchmarkRuns.pop();
+    }
+    res.json({ success: true, savedRecord: record });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to save benchmark run' });
+  }
+});
+
 // Get leaderboard and run statistics
 app.get('/api/benchmark/leaderboard', (req, res) => {
   res.json({
     runs: savedBenchmarkRuns,
     totalRuns: savedBenchmarkRuns.length,
   });
+});
+
+// Alias for get runs
+app.get('/api/leaderboard/runs', (req, res) => {
+  res.json(savedBenchmarkRuns);
 });
 
 // -------------------------------------------------------------

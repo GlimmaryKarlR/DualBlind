@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /benchmark_runs/{runId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['id', 'problemTitle', 'agentAConfig', 'agentBConfig', 'metrics']);
+      allow update, delete: if false;
+    }
+  }
+}
