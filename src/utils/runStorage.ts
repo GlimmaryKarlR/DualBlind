@@ -1,6 +1,18 @@
 import { BenchmarkRunRecord } from '../types/benchmark';
+import { getFirestoreDb } from '../lib/firebase';
+import {
+  collection,
+  doc,
+  setDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  limit,
+  Unsubscribe,
+} from 'firebase/firestore';
 
 const STORAGE_KEY = 'dualblind_benchmark_runs_v1';
+const FIRESTORE_COLLECTION = 'benchmark_runs';
 
 export const SEED_RUNS: BenchmarkRunRecord[] = [
   {
@@ -132,6 +144,30 @@ export const SEED_RUNS: BenchmarkRunRecord[] = [
   },
 ];
 
+/**
+ * Merge and deduplicate runs by ID, sorting by newest date first.
+ */
+export function mergeAndDeduplicateRuns(
+  primary: BenchmarkRunRecord[],
+  fallback: BenchmarkRunRecord[]
+): BenchmarkRunRecord[] {
+  const map = new Map<string, BenchmarkRunRecord>();
+  // Fallbacks first (e.g. seeds)
+  for (const item of fallback) {
+    if (item && item.id) map.set(item.id, item);
+  }
+  // Primary overwrite (cloud runs or newest local runs)
+  for (const item of primary) {
+    if (item && item.id) map.set(item.id, item);
+  }
+
+  const list = Array.from(map.values());
+  return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 300);
+}
+
+/**
+ * Get runs cached locally in browser
+ */
 export function getStoredRuns(): BenchmarkRunRecord[] {
   if (typeof window === 'undefined') return SEED_RUNS;
   try {
@@ -142,7 +178,7 @@ export function getStoredRuns(): BenchmarkRunRecord[] {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      return mergeAndDeduplicateRuns(parsed, SEED_RUNS);
     }
     return SEED_RUNS;
   } catch (e) {
@@ -151,15 +187,153 @@ export function getStoredRuns(): BenchmarkRunRecord[] {
   }
 }
 
-export function saveRunToStorage(record: BenchmarkRunRecord): BenchmarkRunRecord[] {
-  if (typeof window === 'undefined') return [record];
+/**
+ * Clean data for Firestore (remove undefined values, ensure json compatibility)
+ */
+function sanitizeForFirestore<T>(data: T): T {
+  return JSON.parse(JSON.stringify(data));
+}
+
+/**
+ * Save run record universally (to Firestore Cloud Database + local storage)
+ */
+export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<BenchmarkRunRecord[]> {
+  // 1. Immediately cache locally
+  let updatedLocal: BenchmarkRunRecord[] = [record];
   try {
     const current = getStoredRuns();
-    const updated = [record, ...current.filter((r) => r.id !== record.id)].slice(0, 150);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    return updated;
+    updatedLocal = mergeAndDeduplicateRuns([record], current);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
   } catch (e) {
-    console.error('Failed to save run to localStorage:', e);
-    return [record];
+    console.warn('Local storage cache update failed:', e);
+  }
+
+  // 2. Persist to Firestore Universal Database
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      const sanitizedRecord = sanitizeForFirestore({
+        ...record,
+        updatedAt: new Date().toISOString(),
+      });
+      const docRef = doc(db, FIRESTORE_COLLECTION, record.id);
+      await setDoc(docRef, sanitizedRecord);
+      console.info(`[Universal Leaderboard] Benchmark run ${record.id} synced to Firestore cloud.`);
+    } catch (firestoreErr) {
+      console.error('[Universal Leaderboard] Cloud sync error:', firestoreErr);
+    }
+  }
+
+  return updatedLocal;
+}
+
+/**
+ * Backward-compatible synchronous wrapper for local save, calls universal save asynchronously
+ */
+export function saveRunToStorage(record: BenchmarkRunRecord): BenchmarkRunRecord[] {
+  saveRunUniversal(record).catch((err) => {
+    console.error('Async Firestore sync error in saveRunToStorage:', err);
+  });
+  return getStoredRuns();
+}
+
+/**
+ * Fetch all universal runs directly from Firestore
+ */
+export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]> {
+  const db = getFirestoreDb();
+  if (!db) return getStoredRuns();
+
+  try {
+    const runsRef = collection(db, FIRESTORE_COLLECTION);
+    const q = query(runsRef, limit(200));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      // Seed Firestore with baseline comparison runs if newly provisioned
+      seedInitialRunsToCloud(db).catch(() => {});
+      return getStoredRuns();
+    }
+
+    const cloudRuns: BenchmarkRunRecord[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data() as BenchmarkRunRecord;
+      if (data && data.id && data.problemTitle) {
+        cloudRuns.push(data);
+      }
+    });
+
+    const merged = mergeAndDeduplicateRuns(cloudRuns, SEED_RUNS);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    return merged;
+  } catch (error) {
+    console.warn('[Universal Leaderboard] Fetch from cloud failed, using local cache:', error);
+    return getStoredRuns();
+  }
+}
+
+/**
+ * Seed initial baseline runs to Firestore if empty
+ */
+async function seedInitialRunsToCloud(db: any) {
+  try {
+    for (const seed of SEED_RUNS) {
+      const docRef = doc(db, FIRESTORE_COLLECTION, seed.id);
+      await setDoc(docRef, sanitizeForFirestore(seed));
+    }
+  } catch (e) {
+    console.warn('Initial cloud seed skipped:', e);
+  }
+}
+
+/**
+ * Subscribe to real-time Universal Leaderboard updates across all users
+ */
+export function subscribeUniversalLeaderboard(
+  onUpdate: (runs: BenchmarkRunRecord[]) => void
+): Unsubscribe | null {
+  const db = getFirestoreDb();
+  if (!db) {
+    onUpdate(getStoredRuns());
+    return null;
+  }
+
+  try {
+    const runsRef = collection(db, FIRESTORE_COLLECTION);
+    const q = query(runsRef, limit(200));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        if (snapshot.empty) {
+          onUpdate(getStoredRuns());
+          return;
+        }
+
+        const cloudRuns: BenchmarkRunRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as BenchmarkRunRecord;
+          if (data && data.id && data.problemTitle) {
+            cloudRuns.push(data);
+          }
+        });
+
+        const merged = mergeAndDeduplicateRuns(cloudRuns, SEED_RUNS);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        } catch {}
+        onUpdate(merged);
+      },
+      (error) => {
+        console.warn('[Universal Leaderboard] Realtime subscription notice:', error);
+        onUpdate(getStoredRuns());
+      }
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn('[Universal Leaderboard] Subscription setup failed, falling back to local cache:', err);
+    onUpdate(getStoredRuns());
+    return null;
   }
 }
