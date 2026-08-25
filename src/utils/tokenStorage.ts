@@ -17,6 +17,18 @@ export interface ProviderMeta {
 
 export const PROVIDER_METAS: ProviderMeta[] = [
   {
+    id: 'openrouter',
+    name: 'OpenRouter (Universal Hub)',
+    brandName: 'OpenRouter',
+    category: 'universal',
+    tokenLabel: 'OpenRouter API Key',
+    placeholder: 'sk-or-v1-...',
+    portalUrl: 'https://openrouter.ai/keys',
+    portalName: 'OpenRouter Keys',
+    helpText: 'Single universal key routing to all 200+ global and open-weights models (DeepSeek, Llama, Qwen, Claude, GPT, etc.).',
+    recommendedModels: ['meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-r1', 'qwen/qwen-2.5-72b-instruct'],
+  },
+  {
     id: 'google',
     name: 'Google Gemini API',
     brandName: 'Google AI',
@@ -147,18 +159,6 @@ export const PROVIDER_METAS: ProviderMeta[] = [
     portalName: 'AWS Bedrock Console',
     helpText: 'Amazon Nova Pro, Nova Lite, and Nova Micro.',
     recommendedModels: ['amazon-nova-pro', 'amazon-nova-lite', 'amazon-nova-micro'],
-  },
-  {
-    id: 'openrouter',
-    name: 'OpenRouter (Universal Hub)',
-    brandName: 'OpenRouter',
-    category: 'universal',
-    tokenLabel: 'OpenRouter API Key',
-    placeholder: 'sk-or-v1-...',
-    portalUrl: 'https://openrouter.ai/keys',
-    portalName: 'OpenRouter Keys',
-    helpText: 'Single universal key routing to all 200+ global and open-weights models.',
-    recommendedModels: ['meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-r1', 'qwen/qwen-2.5-72b-instruct'],
   },
 ];
 

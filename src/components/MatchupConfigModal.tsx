@@ -27,6 +27,10 @@ import {
   Search,
   Server,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Sparkles,
   Cpu,
 } from 'lucide-react';
 
@@ -68,6 +72,7 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
   // API Tokens state
   const [apiKeys, setApiKeys] = useState<ProviderApiKeys>(initialApiKeys || getStoredApiKeys());
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({}); // All collapsed by default
   const [tokenSearchQuery, setTokenSearchQuery] = useState<string>('');
   const [tokenCategoryFilter, setTokenCategoryFilter] = useState<'all' | 'tier1' | 'regional' | 'universal'>('all');
   const [savedBanner, setSavedBanner] = useState<boolean>(false);
@@ -81,10 +86,29 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
       setApiKeys(initialApiKeys || getStoredApiKeys());
       setActiveTab(initialTab);
       setSavedBanner(false);
+      setExpandedCards({}); // Reset to all collapsed when opening
     }
   }, [isOpen, initialAgentA, initialAgentB, initialMaxTurns, initialIsUncapped, initialTab, initialApiKeys]);
 
   if (!isOpen) return null;
+
+  const toggleCardExpansion = (cardId: string) => {
+    setExpandedCards((prev) => ({
+      ...prev,
+      [cardId]: !prev[cardId],
+    }));
+  };
+
+  const handleExpandAll = (expand: boolean) => {
+    const nextState: Record<string, boolean> = {};
+    if (expand) {
+      PROVIDER_METAS.forEach((p) => {
+        nextState[p.id] = true;
+      });
+      nextState['custom_endpoint'] = true;
+    }
+    setExpandedCards(nextState);
+  };
 
   const handleKeyChange = (providerKey: keyof ProviderApiKeys, value: string) => {
     setApiKeys((prev) => {
@@ -473,18 +497,43 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
           {activeTab === 'tokens' && (
             <div className="space-y-4">
               {/* Token Hub Intro Banner */}
-              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-                <div className="flex items-start gap-2.5">
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
-                    <Key className="h-3.5 w-3.5" />
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3.5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
+                      <Key className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-slate-900 dark:text-white text-xs">
+                          Universal API Keys & Provider Tokens
+                        </h3>
+                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                          {configuredCount} / {PROVIDER_METAS.length} Active
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
+                        Add your personal API keys to run benchmark turn evaluations directly against live frontier models. Keys are stored locally in your browser.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 dark:text-white text-xs">
-                      Universal API Keys & Provider Tokens
-                    </h3>
-                    <p className="text-[11px] text-slate-700 dark:text-slate-300 mt-0.5 leading-relaxed">
-                      Add your API keys to run live automated benchmark inference directly on any AI provider. Keys are saved strictly in your browser's private local storage.
-                    </p>
+
+                  {/* Bulk Expand / Collapse buttons */}
+                  <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleExpandAll(false)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
+                    >
+                      Collapse All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExpandAll(true)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
+                    >
+                      Expand All
+                    </button>
                   </div>
                 </div>
               </div>
@@ -495,197 +544,302 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                   <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search provider or model..."
+                    placeholder="Search provider, token or model..."
                     value={tokenSearchQuery}
                     onChange={(e) => setTokenSearchQuery(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 focus:outline-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                 </div>
 
-                <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto">
-                  <button
-                    onClick={() => setTokenCategoryFilter('all')}
-                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                      tokenCategoryFilter === 'all'
-                        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                    }`}
-                  >
-                    All ({PROVIDER_METAS.length})
-                  </button>
-                  <button
-                    onClick={() => setTokenCategoryFilter('tier1')}
-                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                      tokenCategoryFilter === 'tier1'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                    }`}
-                  >
-                    Frontier Tier-1
-                  </button>
-                  <button
-                    onClick={() => setTokenCategoryFilter('regional')}
-                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                      tokenCategoryFilter === 'regional'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                    }`}
-                  >
-                    Regional & Open
-                  </button>
-                  <button
-                    onClick={() => setTokenCategoryFilter('universal')}
-                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                      tokenCategoryFilter === 'universal'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                    }`}
-                  >
-                    Universal Hubs
-                  </button>
+                <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto justify-between sm:justify-end">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setTokenCategoryFilter('all')}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        tokenCategoryFilter === 'all'
+                          ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      All ({PROVIDER_METAS.length})
+                    </button>
+                    <button
+                      onClick={() => setTokenCategoryFilter('universal')}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        tokenCategoryFilter === 'universal'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      Universal Hubs
+                    </button>
+                    <button
+                      onClick={() => setTokenCategoryFilter('tier1')}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        tokenCategoryFilter === 'tier1'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      Frontier Tier-1
+                    </button>
+                    <button
+                      onClick={() => setTokenCategoryFilter('regional')}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        tokenCategoryFilter === 'regional'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      Regional & Open
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Provider List Grid */}
-              <div className="space-y-3">
+              {/* Provider List Grid - Collapsible Cards */}
+              <div className="space-y-2">
                 {filteredProviders.map((provider) => {
                   const pKey = provider.id as keyof ProviderApiKeys;
                   const currentVal = (apiKeys[pKey] as string) || '';
                   const isConfigured = Boolean(currentVal && currentVal.trim().length > 0);
                   const isVisible = Boolean(visibleKeys[provider.id]);
+                  const isExpanded = Boolean(expandedCards[provider.id]);
+                  const isOpenRouter = provider.id === 'openrouter';
 
                   return (
                     <div
                       key={provider.id}
-                      className={`rounded-2xl border p-3.5 transition-all ${
-                        isConfigured
+                      className={`rounded-2xl border transition-all overflow-hidden ${
+                        isOpenRouter
+                          ? isConfigured
+                            ? 'border-indigo-300 bg-indigo-50/30 dark:border-indigo-800 dark:bg-indigo-950/20'
+                            : 'border-indigo-200/80 bg-white dark:border-indigo-900/60 dark:bg-slate-800/80'
+                          : isConfigured
                           ? 'border-emerald-200 bg-emerald-50/20 dark:border-emerald-900/40 dark:bg-emerald-950/10'
                           : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800/60'
                       }`}
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 dark:text-white">
-                            {provider.name}
-                          </span>
-                          {isConfigured ? (
-                            <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-                              <CheckCircle2 className="h-3 w-3" />
-                              <span>Connected</span>
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                              Not set
-                            </span>
-                          )}
-                        </div>
-
-                        <a
-                          href={provider.portalUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 hover:underline"
-                        >
-                          <span>Get key at {provider.portalName}</span>
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </div>
-
-                      <div className="relative flex items-center">
-                        <div className="absolute left-3 text-slate-400">
-                          <Lock className="h-3.5 w-3.5" />
-                        </div>
-                        <input
-                          type={isVisible ? 'text' : 'password'}
-                          placeholder={provider.placeholder}
-                          value={currentVal}
-                          onChange={(e) => handleKeyChange(pKey, e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pl-9 pr-16 font-mono text-xs text-slate-900 focus:bg-white focus:outline-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                        />
-                        <div className="absolute right-2 flex items-center gap-1">
+                      {/* Clickable Header Row */}
+                      <div
+                        onClick={() => toggleCardExpansion(provider.id)}
+                        className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/80 transition-colors select-none"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <button
                             type="button"
-                            onClick={() => toggleKeyVisibility(provider.id)}
-                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            title={isVisible ? 'Hide token' : 'Show token'}
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                           >
-                            {isVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-slate-500" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-slate-400" />
+                            )}
                           </button>
-                          {currentVal && (
-                            <button
-                              type="button"
-                              onClick={() => handleKeyChange(pKey, '')}
-                              className="rounded-lg p-1 text-slate-400 hover:bg-rose-100 hover:text-rose-600 dark:hover:bg-rose-950/60 dark:hover:text-rose-400 cursor-pointer"
-                              title="Clear key"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
+
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">
+                              {provider.name}
+                            </span>
+
+                            {isOpenRouter && (
+                              <span className="flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 dark:border dark:border-indigo-800">
+                                <Sparkles className="h-2.5 w-2.5" />
+                                Recommended Hub
+                              </span>
+                            )}
+
+                            {isConfigured ? (
+                              <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                                <CheckCircle2 className="h-3 w-3" />
+                                <span>Connected</span>
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                Not set
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {isConfigured && !isExpanded && (
+                            <span className="hidden sm:inline font-mono text-[10px] text-slate-600 dark:text-slate-400">
+                              ••••••••{currentVal.slice(-4)}
+                            </span>
                           )}
+                          <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                            {isExpanded ? 'Collapse' : 'Configure'}
+                          </span>
                         </div>
                       </div>
 
-                      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-700 dark:text-slate-400">
-                        <span>{provider.helpText}</span>
-                        <span className="font-mono text-slate-700 dark:text-slate-400">
-                          Models: {provider.recommendedModels.join(', ')}
-                        </span>
-                      </div>
+                      {/* Expandable Body */}
+                      {isExpanded && (
+                        <div className="border-t border-slate-100 p-3.5 pt-3 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-900/40 animate-fade-in">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2.5">
+                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              {provider.tokenLabel}
+                            </span>
+                            <a
+                              href={provider.portalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 hover:underline"
+                            >
+                              <span>Get key at {provider.portalName}</span>
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+
+                          <div className="relative flex items-center">
+                            <div className="absolute left-3 text-slate-400">
+                              <Lock className="h-3.5 w-3.5" />
+                            </div>
+                            <input
+                              type={isVisible ? 'text' : 'password'}
+                              placeholder={provider.placeholder}
+                              value={currentVal}
+                              onChange={(e) => handleKeyChange(pKey, e.target.value)}
+                              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-16 font-mono text-xs text-slate-900 focus:bg-white focus:outline-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            />
+                            <div className="absolute right-2 flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => toggleKeyVisibility(provider.id)}
+                                className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                                title={isVisible ? 'Hide token' : 'Show token'}
+                              >
+                                {isVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                              </button>
+                              {currentVal && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleKeyChange(pKey, '')}
+                                  className="rounded-lg p-1 text-slate-400 hover:bg-rose-100 hover:text-rose-600 dark:hover:bg-rose-950/60 dark:hover:text-rose-400 cursor-pointer"
+                                  title="Clear key"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-600 dark:text-slate-400">
+                            <span>{provider.helpText}</span>
+                            <span className="font-mono text-slate-600 dark:text-slate-400">
+                              Models: {provider.recommendedModels.join(', ')}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
 
-              {/* Custom Endpoint / Self-Hosted LLM (Ollama, vLLM, LMStudio, Together) */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800/60">
-                <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white mb-2">
-                  <Server className="h-4 w-4 text-indigo-600" />
-                  <span>Custom OpenAI-Compatible Endpoint (Ollama / vLLM / Local)</span>
-                </div>
-                <p className="text-[11px] text-slate-700 dark:text-slate-400 mb-3">
-                  Connect your local runner or custom gateway. Any standard OpenAI-compatible `/chat/completions` server is supported.
-                </p>
+              {/* Custom Endpoint / Self-Hosted LLM (Ollama, vLLM, LMStudio) - Collapsible */}
+              {(() => {
+                const isCustomExpanded = Boolean(expandedCards['custom_endpoint']);
+                const hasCustomConfig = Boolean(apiKeys.customEndpoint?.baseUrl || apiKeys.customEndpoint?.apiKey);
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Base API URL
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="http://localhost:11434/v1"
-                      value={apiKeys.customEndpoint?.baseUrl || ''}
-                      onChange={(e) => handleCustomEndpointChange('baseUrl', e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-2 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                    />
-                  </div>
+                return (
+                  <div
+                    className={`rounded-2xl border transition-all overflow-hidden ${
+                      hasCustomConfig
+                        ? 'border-emerald-200 bg-emerald-50/20 dark:border-emerald-900/40 dark:bg-emerald-950/10'
+                        : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800/60'
+                    }`}
+                  >
+                    <div
+                      onClick={() => toggleCardExpansion('custom_endpoint')}
+                      className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/80 transition-colors select-none"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <button
+                          type="button"
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        >
+                          {isCustomExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-slate-500" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-slate-400" />
+                          )}
+                        </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Server className="h-4 w-4 text-indigo-600" />
+                          <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                            Custom OpenAI-Compatible Endpoint (Ollama / vLLM / Local)
+                          </span>
+                          {hasCustomConfig ? (
+                            <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                              <CheckCircle2 className="h-3 w-3" />
+                              <span>Configured</span>
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                              Optional
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Model Identifier
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g., llama3.3:70b or qwen2.5"
-                      value={apiKeys.customEndpoint?.modelName || ''}
-                      onChange={(e) => handleCustomEndpointChange('modelName', e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-2 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                    />
-                  </div>
+                      <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                        {isCustomExpanded ? 'Collapse' : 'Configure'}
+                      </span>
+                    </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Bearer Token / Key
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="Optional or 'ollama'"
-                      value={apiKeys.customEndpoint?.apiKey || ''}
-                      onChange={(e) => handleCustomEndpointChange('apiKey', e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-2 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                    />
+                    {isCustomExpanded && (
+                      <div className="border-t border-slate-100 p-4 pt-3 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 animate-fade-in">
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 mb-3">
+                          Connect your local runner or private gateway. Any standard OpenAI-compatible `/chat/completions` server is supported.
+                        </p>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                              Base API URL
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="http://localhost:11434/v1"
+                              value={apiKeys.customEndpoint?.baseUrl || ''}
+                              onChange={(e) => handleCustomEndpointChange('baseUrl', e.target.value)}
+                              className="w-full rounded-xl border border-slate-200 bg-white p-2 font-mono text-xs text-slate-900 focus:outline-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                              Model Identifier
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g., llama3.3:70b or qwen2.5"
+                              value={apiKeys.customEndpoint?.modelName || ''}
+                              onChange={(e) => handleCustomEndpointChange('modelName', e.target.value)}
+                              className="w-full rounded-xl border border-slate-200 bg-white p-2 font-mono text-xs text-slate-900 focus:outline-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                              Bearer Token / Key
+                            </label>
+                            <input
+                              type="password"
+                              placeholder="Optional or 'ollama'"
+                              value={apiKeys.customEndpoint?.apiKey || ''}
+                              onChange={(e) => handleCustomEndpointChange('apiKey', e.target.value)}
+                              className="w-full rounded-xl border border-slate-200 bg-white p-2 font-mono text-xs text-slate-900 focus:outline-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              </div>
+                );
+              })()}
             </div>
           )}
         </div>
