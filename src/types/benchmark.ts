@@ -148,6 +148,10 @@ export interface BenchmarkRunRecord {
   problemId: string;
   problemTitle: string;
   topic: TopicCategory;
+  suite?: string;
+  suiteId?: BenchmarkSuiteId;
+  domain?: string;
+  sourceCitation?: string;
   difficulty: DifficultyLevel;
   date: string;
   agentAConfig: AgentConfig;
