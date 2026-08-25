@@ -385,6 +385,10 @@ export default function App() {
             problemId: currentProblem.id,
             problemTitle: currentProblem.title,
             topic: currentProblem.topic,
+            suite: currentProblem.suite,
+            suiteId: currentProblem.suiteId,
+            domain: currentProblem.domain,
+            sourceCitation: currentProblem.sourceCitation,
             difficulty: currentProblem.difficulty,
             date: new Date().toISOString(),
             agentAConfig: {
