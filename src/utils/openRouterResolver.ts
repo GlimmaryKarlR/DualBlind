@@ -40,10 +40,34 @@ const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
     'x-ai/grok-beta',
   ],
   anthropic: [
-    'anthropic/claude-3.7-sonnet',
-    'anthropic/claude-3.5-sonnet',
+    'anthropic/claude-fable-5',
+    'anthropic/claude-fable-5:batch',
+    'anthropic/claude-sonnet-5',
+    'anthropic/claude-sonnet-5:batch',
+    'anthropic/claude-opus-5',
+    'anthropic/claude-opus-5-fast',
+    'anthropic/claude-opus-5:batch',
+    'anthropic/claude-opus-4.8',
+    'anthropic/claude-opus-4.8-fast',
+    'anthropic/claude-opus-4.8:batch',
+    'anthropic/claude-opus-4.7',
+    'anthropic/claude-opus-4.7-fast',
+    'anthropic/claude-opus-4.7:batch',
+    'anthropic/claude-sonnet-4.6',
+    'anthropic/claude-sonnet-4.6:batch',
+    'anthropic/claude-opus-4.6',
+    'anthropic/claude-opus-4.6:batch',
+    'anthropic/claude-sonnet-4.5',
+    'anthropic/claude-sonnet-4.5:batch',
+    'anthropic/claude-opus-4.5',
+    'anthropic/claude-opus-4.5:batch',
+    'anthropic/claude-haiku-4.5',
+    'anthropic/claude-haiku-4.5:batch',
+    'anthropic/claude-sonnet-4',
+    'anthropic/claude-opus-4',
+    'anthropic/claude-opus-4.1',
+    'anthropic/claude-opus-4.1:batch',
     'anthropic/claude-3-haiku',
-    'anthropic/claude-3-opus',
   ],
   openai: [
     'openai/gpt-4o',
@@ -245,6 +269,39 @@ export function resolveOpenRouterModel(modelInput: string): string {
 
   // 2. Identify the creator/provider
   const creator = detectCreator(input);
+  const lower = input.toLowerCase().replace(/[^a-z0-9.:]+/g, '-');
+
+  // Direct high-accuracy resolution for Anthropic Claude series
+  if (creator === 'anthropic') {
+    if (lower.includes('fable')) return lower.includes('batch') ? 'anthropic/claude-fable-5:batch' : 'anthropic/claude-fable-5';
+    if (lower.includes('sonnet-5') || lower.includes('sonnet 5')) return lower.includes('batch') ? 'anthropic/claude-sonnet-5:batch' : 'anthropic/claude-sonnet-5';
+    if (lower.includes('opus-5') || lower.includes('opus 5')) {
+      if (lower.includes('fast')) return 'anthropic/claude-opus-5-fast';
+      if (lower.includes('batch')) return 'anthropic/claude-opus-5:batch';
+      return 'anthropic/claude-opus-5';
+    }
+    if (lower.includes('opus-4.8') || lower.includes('opus-4-8')) return lower.includes('fast') ? 'anthropic/claude-opus-4.8-fast' : lower.includes('batch') ? 'anthropic/claude-opus-4.8:batch' : 'anthropic/claude-opus-4.8';
+    if (lower.includes('opus-4.7') || lower.includes('opus-4-7')) return lower.includes('fast') ? 'anthropic/claude-opus-4.7-fast' : lower.includes('batch') ? 'anthropic/claude-opus-4.7:batch' : 'anthropic/claude-opus-4.7';
+    if (lower.includes('sonnet-4.6') || lower.includes('sonnet-4-6')) return lower.includes('batch') ? 'anthropic/claude-sonnet-4.6:batch' : 'anthropic/claude-sonnet-4.6';
+    if (lower.includes('opus-4.6') || lower.includes('opus-4-6')) return lower.includes('batch') ? 'anthropic/claude-opus-4.6:batch' : 'anthropic/claude-opus-4.6';
+    if (lower.includes('sonnet-4.5') || lower.includes('sonnet-4-5') || lower.includes('claude-3-5-sonnet') || lower.includes('claude-3.5-sonnet')) {
+      return lower.includes('batch') ? 'anthropic/claude-sonnet-4.5:batch' : 'anthropic/claude-sonnet-4.5';
+    }
+    if (lower.includes('haiku-4.5') || lower.includes('haiku-4-5') || lower.includes('claude-3-5-haiku') || lower.includes('claude-3.5-haiku')) {
+      return lower.includes('batch') ? 'anthropic/claude-haiku-4.5:batch' : 'anthropic/claude-haiku-4.5';
+    }
+    if (lower.includes('opus-4.5') || lower.includes('opus-4-5')) return lower.includes('batch') ? 'anthropic/claude-opus-4.5:batch' : 'anthropic/claude-opus-4.5';
+    if (lower.includes('sonnet-4') || lower.includes('sonnet-4-0')) return 'anthropic/claude-sonnet-4';
+    if (lower.includes('opus-4.1') || lower.includes('opus-4-1')) return lower.includes('batch') ? 'anthropic/claude-opus-4.1:batch' : 'anthropic/claude-opus-4.1';
+    if (lower.includes('opus-4') || lower.includes('opus-4-0')) return 'anthropic/claude-opus-4';
+    if (lower.includes('3-haiku') || lower.includes('3.0-haiku')) return 'anthropic/claude-3-haiku';
+    if (lower.includes('haiku')) return 'anthropic/claude-haiku-4.5';
+    if (lower.includes('opus')) return 'anthropic/claude-opus-5';
+    if (lower.includes('sonnet') || lower.includes('claude-3-7') || lower.includes('claude-3.7') || lower.includes('claude')) {
+      return 'anthropic/claude-sonnet-5';
+    }
+  }
+
   const inputTokens = tokenize(input);
 
   // Filter pool of candidate models
