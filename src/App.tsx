@@ -375,11 +375,62 @@ export default function App() {
         if (verifyData.isCorrect && consensusReached && !abortedAsNonFunctional) {
           fireSuccessConfetti();
         }
+
+        // Automatically upload completed run to Universal Firestore Cloud Leaderboard
+        try {
+          const agentAInfo = getAgentMakeAndModel(agentA);
+          const agentBInfo = getAgentMakeAndModel(agentB);
+          const autoRecord: BenchmarkRunRecord = {
+            id: `run-${Date.now()}`,
+            problemId: currentProblem.id,
+            problemTitle: currentProblem.title,
+            topic: currentProblem.topic,
+            difficulty: currentProblem.difficulty,
+            date: new Date().toISOString(),
+            agentAConfig: {
+              ...agentA,
+              name: agentAInfo.fullDisplayName,
+              brand: agentAInfo.make,
+            },
+            agentBConfig: {
+              ...agentB,
+              name: agentBInfo.fullDisplayName,
+              brand: agentBInfo.make,
+            },
+            maxTurns,
+            isUncapped,
+            consensusStatus: abortedAsNonFunctional
+              ? 'infinite_loop_abort'
+              : consensusReached
+              ? 'consensus_reached'
+              : 'turn_cap_exhausted',
+            finalAgreedAnswer: completedVerification.evaluatedAnswer,
+            metrics: completedMetrics,
+            verification: completedVerification,
+            turns: finalTurns,
+          };
+
+          setIsRunSaved(true);
+          saveRunUniversal(autoRecord)
+            .then((updated) => {
+              setRunsHistory(updated);
+            })
+            .catch((err) => console.warn('Auto-save run sync notice:', err));
+
+          fetch('/api/leaderboard/save-run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(autoRecord),
+          }).catch(() => {});
+        } catch (saveErr) {
+          console.warn('Auto-upload benchmark run notice:', saveErr);
+          setIsRunSaved(true);
+        }
       } catch (e) {
         console.error('Verification error:', e);
       }
     },
-    [currentProblem, isUncapped]
+    [currentProblem, isUncapped, agentA, agentB, maxTurns]
   );
 
   // Execute a single turn (handles automated API or triggers manual proxy)

@@ -33,7 +33,8 @@ export type TeamFunctionalityRating =
   | 'optimal' // Fast consensus (<5 turns, low cost)
   | 'deliberating' // Moderate turns (5-8 turns)
   | 'high_burn' // High token burn (>8 turns)
-  | 'non_functional_infinite_burn'; // Looping/runaway without consensus
+  | 'non_functional_infinite_burn' // Looping/runaway without consensus
+  | (string & {});
 
 export interface AgentConfig {
   id: 'agent_a' | 'agent_b';
