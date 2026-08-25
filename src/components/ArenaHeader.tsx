@@ -66,23 +66,56 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         {/* Left Side: Topic Filter & Problem Selector */}
         <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          {/* Topic Pills */}
-          <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80 shrink-0">
+          {/* Topic / Suite Pills */}
+          <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80 shrink-0 overflow-x-auto no-scrollbar max-w-full">
             <button
               onClick={() => onSelectTopic('all')}
               disabled={isRunning}
-              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer ${
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                 selectedTopic === 'all'
                   ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-700 dark:text-white'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
-              All
+              All Tests ({BENCHMARK_PROBLEMS.length})
+            </button>
+            <button
+              onClick={() => onSelectTopic('science')}
+              disabled={isRunning}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                selectedTopic === 'science'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              <span>MMLU / GPQA</span>
+            </button>
+            <button
+              onClick={() => onSelectTopic('coding')}
+              disabled={isRunning}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                selectedTopic === 'coding'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              <span>SWE-bench</span>
+            </button>
+            <button
+              onClick={() => onSelectTopic('math')}
+              disabled={isRunning}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                selectedTopic === 'math'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              <span>MATH / AIME</span>
             </button>
             <button
               onClick={() => onSelectTopic('logic')}
               disabled={isRunning}
-              className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                 selectedTopic === 'logic'
                   ? 'bg-indigo-600 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
@@ -94,9 +127,9 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
             <button
               onClick={() => onSelectTopic('strategy')}
               disabled={isRunning}
-              className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                 selectedTopic === 'strategy'
-                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  ? 'bg-purple-600 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
@@ -104,21 +137,32 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
               <span>Strategy</span>
             </button>
             <button
+              onClick={() => onSelectTopic('instruction_following')}
+              disabled={isRunning}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                selectedTopic === 'instruction_following'
+                  ? 'bg-rose-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              <span>IFEval</span>
+            </button>
+            <button
               onClick={() => onSelectTopic('abstract')}
               disabled={isRunning}
-              className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                 selectedTopic === 'abstract'
-                  ? 'bg-amber-600 text-white shadow-2xs'
+                  ? 'bg-cyan-600 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
               <Shapes className="h-3 w-3" />
-              <span>Abstract</span>
+              <span>ARC</span>
             </button>
           </div>
 
           {/* Problem Selector Dropdown */}
-          <div className="flex-1 min-w-[220px]">
+          <div className="flex-1 min-w-[240px]">
             <select
               id="problem-select-dropdown"
               disabled={isRunning}
@@ -127,11 +171,11 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
                 const p = BENCHMARK_PROBLEMS.find((prob) => prob.id === e.target.value);
                 if (p) onSelectProblem(p);
               }}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 truncate cursor-pointer"
             >
               {filteredProblems.map((p) => (
                 <option key={p.id} value={p.id}>
-                  [{p.topic.toUpperCase()}] {p.title} ({p.difficulty})
+                  [{p.suite || p.topic.toUpperCase()}] {p.title} ({p.difficulty})
                 </option>
               ))}
             </select>

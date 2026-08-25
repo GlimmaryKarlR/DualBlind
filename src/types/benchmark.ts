@@ -1,10 +1,31 @@
-export type TopicCategory = 'logic' | 'strategy' | 'abstract';
+export type TopicCategory =
+  | 'logic'
+  | 'strategy'
+  | 'abstract'
+  | 'coding'
+  | 'math'
+  | 'science'
+  | 'instruction_following';
+
+export type BenchmarkSuiteId =
+  | 'mmlu_pro'
+  | 'gpqa_diamond'
+  | 'swe_bench'
+  | 'math_aime'
+  | 'ifeval'
+  | 'arc_challenge'
+  | 'game_theory'
+  | 'formal_logic';
 
 export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard' | 'Extreme';
 
 export interface BenchmarkProblem {
   id: string;
   topic: TopicCategory;
+  suite?: string; // e.g. "MMLU-Pro", "GPQA Diamond", "SWE-bench", "MATH / AIME", "IFEval", "ARC Challenge"
+  suiteId?: BenchmarkSuiteId;
+  sourceCitation?: string; // Industry origin / source standard
+  domain?: string; // Sub-discipline (e.g. Quantum Physics, Distributed Systems, Discrete Optimization)
   title: string;
   difficulty: DifficultyLevel;
   question: string;

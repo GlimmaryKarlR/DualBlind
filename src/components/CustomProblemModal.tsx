@@ -82,19 +82,23 @@ export const CustomProblemModal: React.FC<CustomProblemModalProps> = ({
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4 text-xs">
           {/* Topic & Difficulty */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Benchmark Topic *
+                Benchmark Discipline & Topic *
               </label>
               <select
                 value={topic}
                 onChange={(e) => setTopic(e.target.value as TopicCategory)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
               >
-                <option value="logic">1. Logic (Deductive / Constraint Reasoning)</option>
-                <option value="strategy">2. Strategy (Game Theory / Decision Optimization)</option>
-                <option value="abstract">3. Abstract Problem Solving (Induction / Patterns)</option>
+                <option value="science">STEM & Science (MMLU-Pro / GPQA Diamond)</option>
+                <option value="coding">Software Engineering & Algorithms (SWE-bench / LiveCode)</option>
+                <option value="math">Competition Math (MATH-500 / AIME)</option>
+                <option value="instruction_following">Verifiable Constraints (IFEval)</option>
+                <option value="logic">Formal Deductive Logic & Constraints</option>
+                <option value="strategy">Game Theory & Strategy (Nash / Mechanism)</option>
+                <option value="abstract">Abstract Reasoning & Abstraction (ARC)</option>
               </select>
             </div>
 
@@ -110,7 +114,7 @@ export const CustomProblemModal: React.FC<CustomProblemModalProps> = ({
                 <option value="Easy">Easy</option>
                 <option value="Medium">Medium</option>
                 <option value="Hard">Hard</option>
-                <option value="Extreme">Extreme</option>
+                <option value="Extreme">Extreme (Frontier PhD)</option>
               </select>
             </div>
           </div>

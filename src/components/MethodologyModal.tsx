@@ -141,36 +141,81 @@ export const MethodologyModal: React.FC<MethodologyModalProps> = ({
             </div>
           </div>
 
-          {/* Section 4: The 3 Core Evaluation Categories */}
+          {/* Section 4: The Benchmark Evaluation Suites */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white mb-2">
-              The 3 Benchmark Evaluation Topics
+              Integrated Industry-Standard Benchmark Suites
             </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="rounded-xl bg-purple-50/60 p-3 border border-purple-100 dark:bg-purple-950/20 dark:border-purple-900/40">
-                <div className="font-bold text-purple-900 dark:text-purple-300 flex items-center gap-1 mb-1">
-                  <Brain className="h-3.5 w-3.5" /> Logic
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <div className="rounded-xl bg-blue-50/60 p-3 border border-blue-100 dark:bg-blue-950/20 dark:border-blue-900/40">
+                <div className="font-bold text-blue-900 dark:text-blue-300 text-xs flex items-center gap-1 mb-1">
+                  🎓 MMLU-Pro & Science
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                  Deductive reasoning, constraint satisfaction, Knights & Knaves identity matrices, and jug-pouring state search.
+                  Rigorous STEM reasoning (Physics, Computer Science, Biology, Economics) with distractors.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-purple-50/60 p-3 border border-purple-100 dark:bg-purple-950/20 dark:border-purple-900/40">
+                <div className="font-bold text-purple-900 dark:text-purple-300 text-xs flex items-center gap-1 mb-1">
+                  ⚛️ GPQA Diamond
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Google-Proof PhD-level science questions designed to resist search engine hallucination.
                 </p>
               </div>
 
               <div className="rounded-xl bg-emerald-50/60 p-3 border border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/40">
-                <div className="font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1 mb-1">
-                  <Crosshair className="h-3.5 w-3.5" /> Strategy
+                <div className="font-bold text-emerald-900 dark:text-emerald-300 text-xs flex items-center gap-1 mb-1">
+                  💻 SWE-bench / Systems
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                  Game theory, Cournot duopoly Nash equilibria, backward induction in resource allocation, and optimal bidding algorithms.
+                  Concurrency invariants, lock-free queues, memory leaks, and algorithmic time complexity.
                 </p>
               </div>
 
               <div className="rounded-xl bg-amber-50/60 p-3 border border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/40">
-                <div className="font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1 mb-1">
-                  <Shapes className="h-3.5 w-3.5" /> Abstract Reasoning
+                <div className="font-bold text-amber-900 dark:text-amber-300 text-xs flex items-center gap-1 mb-1">
+                  📐 MATH / AIME
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                  Cellular lattice induction, alien algebraic operators, polynomial sequence extrapolation, and Monty Hall probability variants.
+                  Olympiad mathematics, modular congruences, derangements, combinatorics, and discrete proofs.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-rose-50/60 p-3 border border-rose-100 dark:bg-rose-950/20 dark:border-rose-900/40">
+                <div className="font-bold text-rose-900 dark:text-rose-300 text-xs flex items-center gap-1 mb-1">
+                  📋 IFEval
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Verifiable instruction following: hard negative constraints, exact word counts, and JSON schemas.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-cyan-50/60 p-3 border border-cyan-100 dark:bg-cyan-950/20 dark:border-cyan-900/40">
+                <div className="font-bold text-cyan-900 dark:text-cyan-300 text-xs flex items-center gap-1 mb-1">
+                  🔷 ARC Challenge
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Abstraction and Reasoning Corpus: visual-spatial matrix logic and cellular automaton invariants.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-indigo-50/60 p-3 border border-indigo-100 dark:bg-indigo-950/20 dark:border-indigo-900/40">
+                <div className="font-bold text-indigo-900 dark:text-indigo-300 text-xs flex items-center gap-1 mb-1">
+                  🎯 Game Theory & Nash
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Cournot duopolies, backward induction, auction mechanisms, and Nim subtraction strategies.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-violet-50/60 p-3 border border-violet-100 dark:bg-violet-950/20 dark:border-violet-900/40">
+                <div className="font-bold text-violet-900 dark:text-violet-300 text-xs flex items-center gap-1 mb-1">
+                  🧠 Formal Logic
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Knights/knaves identity systems, 3-jug state-space decanting trees, and linear seating CSPs.
                 </p>
               </div>
             </div>

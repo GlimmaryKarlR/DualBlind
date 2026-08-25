@@ -54,7 +54,12 @@ export const ProblemCard: React.FC<ProblemCardProps> = ({ problem }) => {
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
               Problem Statement & Consensus Protocol
             </h3>
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+              {problem.suite && (
+                <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                  {problem.suite}
+                </span>
+              )}
               <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate max-w-[180px] sm:max-w-[240px]">
                 • {problem.title}
               </span>
