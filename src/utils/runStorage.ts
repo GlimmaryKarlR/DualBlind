@@ -1,5 +1,6 @@
 import { BenchmarkRunRecord } from '../types/benchmark';
 import { getFirestoreDb } from '../lib/firebase';
+import { HISTORICAL_BENCHMARK_RUNS } from '../data/historicalRuns';
 import {
   collection,
   doc,
@@ -14,135 +15,7 @@ import {
 const STORAGE_KEY = 'dualblind_benchmark_runs_v1';
 const FIRESTORE_COLLECTION = 'benchmark_runs';
 
-export const SEED_RUNS: BenchmarkRunRecord[] = [
-  {
-    id: 'seed-run-1',
-    problemId: 'strat-01',
-    problemTitle: 'Three-Duelist Truel Optimization',
-    topic: 'strategy',
-    difficulty: 'Hard',
-    date: new Date(Date.now() - 3600000 * 2).toISOString(),
-    agentAConfig: {
-      id: 'agent_a',
-      name: 'Agent Alpha (Gemini 2.5 Flash)',
-      model: 'gemini-2.5-flash',
-      provider: 'google',
-      temperature: 0.3,
-      avatarColor: 'indigo',
-    },
-    agentBConfig: {
-      id: 'agent_b',
-      name: 'Agent Beta (Gemini 2.5 Flash)',
-      model: 'gemini-2.5-flash',
-      provider: 'google',
-      temperature: 0.4,
-      avatarColor: 'emerald',
-    },
-    maxTurns: 10,
-    isUncapped: true,
-    consensusStatus: 'consensus_reached',
-    finalAgreedAnswer: 'deliberately shoots into the ground / misses intentionally',
-    metrics: {
-      totalWallClockMs: 3820,
-      totalTokens: 520,
-      totalInputTokens: 340,
-      totalOutputTokens: 180,
-      totalCostUsd: 0.000159,
-      costPerTurnUsd: 0.000053,
-      burnRateUsdPerMin: 0.0025,
-      agentACostUsd: 0.00008,
-      agentBCostUsd: 0.000079,
-      tokensPerSec: 47.1,
-      agentATokens: 270,
-      agentBTokens: 250,
-      agentALatencyMs: 1950,
-      agentBLatencyMs: 1870,
-      turnsCount: 3,
-      consensusTurn: 3,
-      efficiencyIndex: 50.34,
-      consensusReached: true,
-      accuracyScore: 100,
-      isCorrect: true,
-      teamFunctionality: 'optimal',
-      isInfiniteLoopDetected: false,
-      isUncapped: true,
-    },
-    verification: {
-      isCorrect: true,
-      accuracyScore: 100,
-      evaluatedAnswer: 'deliberately shoots into the ground / misses intentionally',
-      canonicalAnswer: 'Deliberately shoots into the air / misses intentionally',
-      explanation:
-        'If Charlie kills Alice or Bob, the survivor gets the next shot at 100% or 80% accuracy. By missing, Alice shoots at Bob (the highest threat), maximizing Charlie survival.',
-      verificationNotes: 'Exact match with ground truth canonical answer.',
-      teamVerdict: 'Highly Functional & Cost-Optimal (<5 Turns)',
-    },
-    turns: [],
-  },
-  {
-    id: 'seed-run-2',
-    problemId: 'logic-01',
-    problemTitle: 'Cheryl’s Birthday Deductive Gridlock',
-    topic: 'logic',
-    difficulty: 'Medium',
-    date: new Date(Date.now() - 3600000 * 5).toISOString(),
-    agentAConfig: {
-      id: 'agent_a',
-      name: 'Agent Alpha (Gemini 2.5 Flash)',
-      model: 'gemini-2.5-flash',
-      provider: 'google',
-      temperature: 0.3,
-      avatarColor: 'indigo',
-    },
-    agentBConfig: {
-      id: 'agent_b',
-      name: 'Agent Beta (Gemini 2.5 Flash)',
-      model: 'gemini-2.5-flash',
-      provider: 'google',
-      temperature: 0.4,
-      avatarColor: 'emerald',
-    },
-    maxTurns: 10,
-    isUncapped: true,
-    consensusStatus: 'consensus_reached',
-    finalAgreedAnswer: 'July 16',
-    metrics: {
-      totalWallClockMs: 2940,
-      totalTokens: 410,
-      totalInputTokens: 260,
-      totalOutputTokens: 150,
-      totalCostUsd: 0.000129,
-      costPerTurnUsd: 0.000064,
-      burnRateUsdPerMin: 0.0026,
-      agentACostUsd: 0.000065,
-      agentBCostUsd: 0.000064,
-      tokensPerSec: 51.0,
-      agentATokens: 210,
-      agentBTokens: 200,
-      agentALatencyMs: 1480,
-      agentBLatencyMs: 1460,
-      turnsCount: 2,
-      consensusTurn: 2,
-      efficiencyIndex: 82.96,
-      consensusReached: true,
-      accuracyScore: 100,
-      isCorrect: true,
-      teamFunctionality: 'optimal',
-      isInfiniteLoopDetected: false,
-      isUncapped: true,
-    },
-    verification: {
-      isCorrect: true,
-      accuracyScore: 100,
-      evaluatedAnswer: 'July 16',
-      canonicalAnswer: 'July 16',
-      explanation: 'Deductive elimination of unique days (May 19, June 18) confirms July 16.',
-      verificationNotes: 'Exact match with ground truth canonical answer.',
-      teamVerdict: 'Highly Functional & Cost-Optimal (<5 Turns)',
-    },
-    turns: [],
-  },
-];
+export const SEED_RUNS: BenchmarkRunRecord[] = HISTORICAL_BENCHMARK_RUNS;
 
 /**
  * Merge and deduplicate runs by ID, sorting by newest date first.
@@ -152,7 +25,7 @@ export function mergeAndDeduplicateRuns(
   fallback: BenchmarkRunRecord[]
 ): BenchmarkRunRecord[] {
   const map = new Map<string, BenchmarkRunRecord>();
-  // Fallbacks first (e.g. seeds)
+  // Fallbacks first (e.g. historical baseline)
   for (const item of fallback) {
     if (item && item.id) map.set(item.id, item);
   }
@@ -162,7 +35,7 @@ export function mergeAndDeduplicateRuns(
   }
 
   const list = Array.from(map.values());
-  return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 300);
+  return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 500);
 }
 
 /**
@@ -182,7 +55,7 @@ export function getStoredRuns(): BenchmarkRunRecord[] {
     }
     return SEED_RUNS;
   } catch (e) {
-    console.warn('Failed to load runs from localStorage, returning seed runs:', e);
+    console.warn('Failed to load runs from localStorage, returning baseline runs:', e);
     return SEED_RUNS;
   }
 }
@@ -217,14 +90,37 @@ export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<Benc
         updatedAt: new Date().toISOString(),
       });
       const docRef = doc(db, FIRESTORE_COLLECTION, record.id);
-      await setDoc(docRef, sanitizedRecord);
-      console.info(`[Universal Leaderboard] Benchmark run ${record.id} synced to Firestore cloud.`);
+      await setDoc(docRef, sanitizedRecord, { merge: true });
+      console.info(`[Universal Leaderboard] Benchmark run ${record.id} synced to Firestore.`);
     } catch (firestoreErr) {
       console.error('[Universal Leaderboard] Cloud sync error:', firestoreErr);
     }
   }
 
   return updatedLocal;
+}
+
+/**
+ * Upload an array of benchmark runs to Firestore
+ */
+export async function uploadRunsToCloud(runs: BenchmarkRunRecord[]): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+
+  try {
+    for (const run of runs) {
+      if (!run || !run.id) continue;
+      const sanitized = sanitizeForFirestore({
+        ...run,
+        updatedAt: new Date().toISOString(),
+      });
+      const docRef = doc(db, FIRESTORE_COLLECTION, run.id);
+      await setDoc(docRef, sanitized, { merge: true });
+    }
+    console.info(`[Universal Leaderboard] Successfully synced ${runs.length} runs to Firestore.`);
+  } catch (e) {
+    console.warn('[Universal Leaderboard] Batch upload to cloud notice:', e);
+  }
 }
 
 /**
@@ -246,12 +142,12 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
 
   try {
     const runsRef = collection(db, FIRESTORE_COLLECTION);
-    const q = query(runsRef, limit(200));
+    const q = query(runsRef, limit(300));
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) {
-      // Seed Firestore with baseline comparison runs if newly provisioned
-      seedInitialRunsToCloud(db).catch(() => {});
+      // Seed Firestore with all historical runs
+      uploadRunsToCloud(SEED_RUNS).catch(() => {});
       return getStoredRuns();
     }
 
@@ -273,20 +169,6 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
 }
 
 /**
- * Seed initial baseline runs to Firestore if empty
- */
-async function seedInitialRunsToCloud(db: any) {
-  try {
-    for (const seed of SEED_RUNS) {
-      const docRef = doc(db, FIRESTORE_COLLECTION, seed.id);
-      await setDoc(docRef, sanitizeForFirestore(seed));
-    }
-  } catch (e) {
-    console.warn('Initial cloud seed skipped:', e);
-  }
-}
-
-/**
  * Subscribe to real-time Universal Leaderboard updates across all users
  */
 export function subscribeUniversalLeaderboard(
@@ -300,12 +182,13 @@ export function subscribeUniversalLeaderboard(
 
   try {
     const runsRef = collection(db, FIRESTORE_COLLECTION);
-    const q = query(runsRef, limit(200));
+    const q = query(runsRef, limit(300));
 
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
         if (snapshot.empty) {
+          uploadRunsToCloud(SEED_RUNS).catch(() => {});
           onUpdate(getStoredRuns());
           return;
         }
@@ -317,6 +200,15 @@ export function subscribeUniversalLeaderboard(
             cloudRuns.push(data);
           }
         });
+
+        // If cloud is missing any historical benchmark runs, backfill them
+        if (cloudRuns.length < SEED_RUNS.length) {
+          const cloudIds = new Set(cloudRuns.map((r) => r.id));
+          const missing = SEED_RUNS.filter((r) => !cloudIds.has(r.id));
+          if (missing.length > 0) {
+            uploadRunsToCloud(missing).catch(() => {});
+          }
+        }
 
         const merged = mergeAndDeduplicateRuns(cloudRuns, SEED_RUNS);
         try {
