@@ -634,7 +634,28 @@ export const BRAND_COLORS: Record<string, string> = {
   Upstage: 'yellow',
 };
 
-export function getBrandGroups(models: CatalogModel[] = ALL_CATALOG_MODELS): BrandGroup[] {
+export function getActiveCatalogModels(): CatalogModel[] {
+  if (typeof window === 'undefined') return ALL_CATALOG_MODELS;
+  try {
+    const raw = localStorage.getItem('dualblind_openrouter_live_scraped_catalog');
+    if (raw) {
+      const parsed: CatalogModel[] = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const mergedMap = new Map<string, CatalogModel>();
+        for (const m of ALL_CATALOG_MODELS) {
+          mergedMap.set(m.id.toLowerCase(), m);
+        }
+        for (const m of parsed) {
+          mergedMap.set(m.id.toLowerCase(), m);
+        }
+        return Array.from(mergedMap.values());
+      }
+    }
+  } catch {}
+  return ALL_CATALOG_MODELS;
+}
+
+export function getBrandGroups(models: CatalogModel[] = getActiveCatalogModels()): BrandGroup[] {
   const map = new Map<string, CatalogModel[]>();
 
   for (const m of models) {
@@ -696,15 +717,16 @@ export function getBrandGroups(models: CatalogModel[] = ALL_CATALOG_MODELS): Bra
 export function findCatalogModel(modelQuery: string): CatalogModel | undefined {
   if (!modelQuery) return undefined;
   const q = modelQuery.trim().toLowerCase();
+  const activePool = getActiveCatalogModels();
   
   // Exact ID or modelCode match
-  const byId = ALL_CATALOG_MODELS.find(
+  const byId = activePool.find(
     (m) => m.id === q || m.modelCode === q || m.rawName.toLowerCase() === q
   );
   if (byId) return byId;
 
   // Fuzzy substring match
-  return ALL_CATALOG_MODELS.find(
+  return activePool.find(
     (m) =>
       m.name.toLowerCase().includes(q) ||
       m.rawName.toLowerCase().includes(q) ||
