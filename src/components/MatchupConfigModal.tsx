@@ -87,22 +87,30 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
   if (!isOpen) return null;
 
   const handleKeyChange = (providerKey: keyof ProviderApiKeys, value: string) => {
-    setApiKeys((prev) => ({
-      ...prev,
-      [providerKey]: value,
-    }));
+    setApiKeys((prev) => {
+      const updated = {
+        ...prev,
+        [providerKey]: value,
+      };
+      saveStoredApiKeys(updated);
+      return updated;
+    });
   };
 
   const handleCustomEndpointChange = (field: 'baseUrl' | 'apiKey' | 'modelName', value: string) => {
-    setApiKeys((prev) => ({
-      ...prev,
-      customEndpoint: {
-        baseUrl: prev.customEndpoint?.baseUrl || '',
-        apiKey: prev.customEndpoint?.apiKey || '',
-        modelName: prev.customEndpoint?.modelName || '',
-        [field]: value,
-      },
-    }));
+    setApiKeys((prev) => {
+      const updated = {
+        ...prev,
+        customEndpoint: {
+          baseUrl: prev.customEndpoint?.baseUrl || '',
+          apiKey: prev.customEndpoint?.apiKey || '',
+          modelName: prev.customEndpoint?.modelName || '',
+          [field]: value,
+        },
+      };
+      saveStoredApiKeys(updated);
+      return updated;
+    });
   };
 
   const toggleKeyVisibility = (providerKey: string) => {

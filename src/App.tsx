@@ -116,6 +116,8 @@ export default function App() {
   const [isConfigModalOpen, setIsConfigModalOpen] = useState<boolean>(false);
   const [configModalTab, setConfigModalTab] = useState<'matchup' | 'tokens'>('matchup');
   const [apiKeys, setApiKeys] = useState<ProviderApiKeys>(() => getStoredApiKeys());
+  const apiKeysRef = useRef(apiKeys);
+  apiKeysRef.current = apiKeys;
 
   const handleOpenConfig = useCallback(() => {
     setConfigModalTab('matchup');
@@ -415,6 +417,12 @@ export default function App() {
 
       try {
         setTurnError(null);
+        const currentActiveKeys = {
+          ...getStoredApiKeys(),
+          ...(apiKeysRef.current || {}),
+          ...(apiKeys || {}),
+        };
+
         const data = await generateBenchmarkTurnHybrid({
           problem: currentProblem,
           agent: currentAgent,
@@ -423,7 +431,7 @@ export default function App() {
           currentTurn: currentTurnList.length,
           maxTurnsPerAgent: isUncapped ? 999 : Math.floor(maxTurns / 2),
           isUncapped,
-          apiKeys,
+          apiKeys: currentActiveKeys,
         });
 
         const latencyMs = data.latencyMs || 1000;
@@ -526,7 +534,7 @@ export default function App() {
         throw err;
       }
     },
-    [agentA, agentB, currentProblem, maxTurns, isUncapped]
+    [agentA, agentB, currentProblem, maxTurns, isUncapped, apiKeys]
   );
 
   // Submit response for manual external proxy turn

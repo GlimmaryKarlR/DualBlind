@@ -134,12 +134,19 @@ async function callOpenAICompatibleDirect(
   messages: Array<{ role: string; content: string }>,
   temperature: number = 0.4
 ): Promise<{ text: string; inputTokens: number; outputTokens: number; modelUsed: string }> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey.trim()}`,
+  };
+
+  if (endpoint.includes('openrouter.ai')) {
+    headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://dualblind.ai';
+    headers['X-Title'] = 'DualBlind Multi-Agent Benchmark';
+  }
+
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey.trim()}`,
-    },
+    headers,
     body: JSON.stringify({
       model: modelName,
       messages,
@@ -152,6 +159,8 @@ async function callOpenAICompatibleDirect(
     const errorData = await response.json().catch(() => ({}));
     const errorMsg =
       errorData?.error?.message ||
+      errorData?.message ||
+      (typeof errorData === 'string' ? errorData : '') ||
       `${modelName} endpoint returned HTTP ${response.status} (${response.statusText})`;
     throw new Error(errorMsg);
   }

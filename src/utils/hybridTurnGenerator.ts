@@ -1,6 +1,6 @@
 import { AgentConfig, BenchmarkProblem, ProviderApiKeys } from '../types/benchmark';
 import { generateTurnDirectClient, TurnGenerationResult } from './clientInference';
-import { hasConfiguredKeyForProvider } from './tokenStorage';
+import { getStoredApiKeys, hasConfiguredKeyForProvider } from './tokenStorage';
 
 export async function generateBenchmarkTurnHybrid(options: {
   problem: BenchmarkProblem;
@@ -10,30 +10,43 @@ export async function generateBenchmarkTurnHybrid(options: {
   currentTurn: number;
   maxTurnsPerAgent: number;
   isUncapped: boolean;
-  apiKeys: ProviderApiKeys;
+  apiKeys?: ProviderApiKeys;
 }): Promise<TurnGenerationResult> {
-  const { agent, apiKeys, history, problem, partnerName, currentTurn, maxTurnsPerAgent, isUncapped } =
+  const { agent, history, problem, partnerName, currentTurn, maxTurnsPerAgent, isUncapped } =
     options;
+
+  // Always merge passed keys with active local storage keys
+  const storedKeys = getStoredApiKeys();
+  const apiKeys: ProviderApiKeys = {
+    ...storedKeys,
+    ...(options.apiKeys || {}),
+  };
 
   const provider = (agent.provider || 'google').toLowerCase();
   
-  // Check for direct provider key, universal OpenRouter key, or Google fallback key
+  // Check for direct provider key, universal OpenRouter key, custom endpoint, or Google key
   const hasDirectKey = hasConfiguredKeyForProvider(provider, apiKeys);
   const hasOpenRouterKey = Boolean(apiKeys.openrouter && apiKeys.openrouter.trim().length > 0);
+  const hasCustomKey = Boolean(apiKeys.customEndpoint?.baseUrl && apiKeys.customEndpoint?.apiKey);
   const hasGoogleKey = Boolean(apiKeys.google && apiKeys.google.trim().length > 0);
 
-  // OpenRouter acts as a universal hub for DeepSeek, Qwen, Llama, etc.
-  const hasUsableKey = hasDirectKey || hasOpenRouterKey || hasGoogleKey;
+  // OpenRouter acts as a universal hub for all models
+  const hasUsableKey = hasDirectKey || hasOpenRouterKey || hasCustomKey || hasGoogleKey;
+
+  const clientOptions = {
+    ...options,
+    apiKeys,
+  };
 
   let directAttemptError: Error | null = null;
 
-  // Strategy 1: Direct Client Inference via Browser
+  // Strategy 1: Direct Client Inference via Browser (Preferred when key is present)
   if (hasUsableKey) {
     try {
-      return await generateTurnDirectClient(options);
+      return await generateTurnDirectClient(clientOptions);
     } catch (clientErr: any) {
       directAttemptError = clientErr;
-      console.warn('Direct client inference failed; trying server API route:', clientErr);
+      console.warn('Direct client inference failed; checking backend fallback:', clientErr);
     }
   }
 
@@ -71,17 +84,16 @@ export async function generateBenchmarkTurnHybrid(options: {
 
     const isMissingBackend = [404, 405, 501].includes(response.status);
 
-    // Strategy 3: Server returned static host error (404/405)
+    // Strategy 3: Server returned static host error (404/405/501)
     if (isMissingBackend) {
-      if (hasUsableKey) {
-        if (!directAttemptError) {
-          console.info(`Server returned HTTP ${response.status} (static host). Executing direct client inference.`);
-          return await generateTurnDirectClient(options);
-        }
+      if (directAttemptError) {
         throw directAttemptError;
       }
+      if (hasUsableKey) {
+        return await generateTurnDirectClient(clientOptions);
+      }
       throw new Error(
-        `Static deployment detected (HTTP ${response.status}). Please enter your API key in the settings to run benchmarks directly in the browser.`
+        `No live API key found. Please open "APIs & Tokens" in the navigation bar to enter your OpenRouter or provider key.`
       );
     }
 
@@ -93,14 +105,21 @@ export async function generateBenchmarkTurnHybrid(options: {
       serverMessage = await response.text().catch(() => '');
     }
 
+    if (directAttemptError) {
+      throw directAttemptError;
+    }
+
     throw new Error(
-      `Server returned HTTP ${response.status}: ${serverMessage.substring(0, 150) || response.statusText}`
+      `Inference Service returned HTTP ${response.status}: ${serverMessage.substring(0, 200) || response.statusText}`
     );
   } catch (netErr: any) {
-    if (hasUsableKey && !directAttemptError) {
-      console.info('Backend unreachable, falling back to direct client execution.');
-      return await generateTurnDirectClient(options);
+    if (directAttemptError) {
+      throw directAttemptError;
     }
-    throw directAttemptError || netErr;
+    if (hasUsableKey) {
+      return await generateTurnDirectClient(clientOptions);
+    }
+    throw netErr;
   }
 }
+
