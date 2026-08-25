@@ -4,8 +4,14 @@ import {
   CatalogModel,
   getBrandGroups,
   findCatalogModel,
+  getActiveCatalogModels,
 } from '../utils/modelCatalog';
 import { resolveOpenRouterModel } from '../utils/clientInference';
+import {
+  scrapeAndWriteOpenRouterModelsLive,
+  getLastScrapedTimestamp,
+  OPENROUTER_SCRAPE_EVENT,
+} from '../utils/openRouterScraper';
 import {
   Search,
   ChevronDown,
@@ -21,6 +27,7 @@ import {
   ExternalLink,
   Bot,
   ChevronsUpDown,
+  RefreshCw,
 } from 'lucide-react';
 
 interface ModelSelectorDropdownProps {
@@ -51,9 +58,48 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
     Anthropic: true,
   });
   const [customInput, setCustomInput] = useState<string>('');
+  const [allModelsPool, setAllModelsPool] = useState<CatalogModel[]>(() => getActiveCatalogModels());
+  const [isScrapingLive, setIsScrapingLive] = useState<boolean>(false);
+  const [lastScrapedAt, setLastScrapedAt] = useState<number | null>(() => getLastScrapedTimestamp());
+  const [scrapeSuccessMsg, setScrapeSuccessMsg] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Listen for real-time live scraped updates
+  useEffect(() => {
+    const handleScrapedEvent = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.models) {
+        setAllModelsPool(getActiveCatalogModels());
+        setLastScrapedAt(detail.timestamp || Date.now());
+      }
+    };
+
+    window.addEventListener(OPENROUTER_SCRAPE_EVENT, handleScrapedEvent);
+    return () => {
+      window.removeEventListener(OPENROUTER_SCRAPE_EVENT, handleScrapedEvent);
+    };
+  }, []);
+
+  const triggerLiveScrape = async () => {
+    if (isScrapingLive) return;
+    setIsScrapingLive(true);
+    setScrapeSuccessMsg(null);
+    try {
+      const result = await scrapeAndWriteOpenRouterModelsLive();
+      setAllModelsPool(getActiveCatalogModels());
+      setLastScrapedAt(result.timestamp);
+      setScrapeSuccessMsg(`Live synced ${result.count} models!`);
+      setTimeout(() => setScrapeSuccessMsg(null), 3000);
+    } catch (err: any) {
+      console.error('Failed to scrape OpenRouter models live:', err);
+      setScrapeSuccessMsg('Sync error: could not fetch OpenRouter API');
+      setTimeout(() => setScrapeSuccessMsg(null), 3000);
+    } finally {
+      setIsScrapingLive(false);
+    }
+  };
 
   // Close on outside click
   useEffect(() => {
@@ -91,12 +137,12 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
       tags: [],
       isFree: false,
     };
-  }, [selectedModel, selectedBrand]);
+  }, [selectedModel, selectedBrand, allModelsPool]);
 
   // Filter models based on search query and brand filter
   const filteredBrandGroups = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    const allGroups = getBrandGroups(ALL_CATALOG_MODELS);
+    const allGroups = getBrandGroups(allModelsPool);
 
     return allGroups
       .map((group) => {
@@ -129,7 +175,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
         };
       })
       .filter((g): g is NonNullable<typeof g> => g !== null);
-  }, [searchQuery, activeBrandFilter]);
+  }, [searchQuery, activeBrandFilter, allModelsPool]);
 
   const totalMatchingModels = useMemo(() => {
     return filteredBrandGroups.reduce((acc, g) => acc + g.models.length, 0);
@@ -270,7 +316,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
         </div>
 
         <div className="flex items-center gap-1 text-slate-400 dark:text-slate-500">
-          <span className="text-[10px] font-medium hidden sm:inline-block">400+ Models</span>
+          <span className="text-[10px] font-medium hidden sm:inline-block">{allModelsPool.length}+ Models</span>
           <ChevronsUpDown className="h-4 w-4 shrink-0" />
         </div>
       </button>
@@ -287,14 +333,14 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search 400+ models by name, brand, or tag (e.g. 'Pro', 'Free', 'R1', 'Sonnet')..."
+                placeholder={`Search ${allModelsPool.length}+ models by name, brand, or tag (e.g. 'Pro', 'Free', 'R1', 'Sonnet')...`}
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-7 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-900"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -305,7 +351,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
               <button
                 type="button"
                 onClick={expandAll}
-                className="rounded px-1.5 py-1 font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/60"
+                className="rounded px-1.5 py-1 font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/60 cursor-pointer"
               >
                 Expand All
               </button>
@@ -313,11 +359,38 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
               <button
                 type="button"
                 onClick={collapseAll}
-                className="rounded px-1.5 py-1 font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                className="rounded px-1.5 py-1 font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Collapse
               </button>
             </div>
+          </div>
+
+          {/* Real-time Live OpenRouter Sync Status Bar */}
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50/50 px-2.5 py-1.5 dark:border-indigo-900/40 dark:bg-indigo-950/20 text-[10px]">
+            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 min-w-0">
+              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-semibold truncate">
+                {scrapeSuccessMsg ? (
+                  <span className="text-indigo-600 dark:text-indigo-400 font-bold">{scrapeSuccessMsg}</span>
+                ) : (
+                  <>
+                    Live Catalog: <strong className="text-slate-900 dark:text-white">{allModelsPool.length} models</strong>
+                    {lastScrapedAt ? ` • Synced ${new Date(lastScrapedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  </>
+                )}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={triggerLiveScrape}
+              disabled={isScrapingLive}
+              className="flex items-center gap-1 shrink-0 rounded-lg bg-indigo-600 px-2 py-0.5 font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 cursor-pointer text-[10px]"
+            >
+              <RefreshCw className={`h-2.5 w-2.5 ${isScrapingLive ? 'animate-spin' : ''}`} />
+              <span>{isScrapingLive ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
           </div>
 
           {/* Quick Brand Filter Tabs */}
@@ -326,8 +399,8 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
               const isActive = activeBrandFilter === brand;
               const count =
                 brand === 'all'
-                  ? ALL_CATALOG_MODELS.length
-                  : ALL_CATALOG_MODELS.filter((m) => m.brand === brand).length;
+                  ? allModelsPool.length
+                  : allModelsPool.filter((m) => m.brand === brand).length;
               if (brand !== 'all' && count === 0) return null;
 
               return (
@@ -335,13 +408,13 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                   key={brand}
                   type="button"
                   onClick={() => setActiveBrandFilter(brand)}
-                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
                     isActive
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
                   }`}
                 >
-                  {brand === 'all' ? `All (${ALL_CATALOG_MODELS.length})` : `${brand} (${count})`}
+                  {brand === 'all' ? `All (${allModelsPool.length})` : `${brand} (${count})`}
                 </button>
               );
             })}

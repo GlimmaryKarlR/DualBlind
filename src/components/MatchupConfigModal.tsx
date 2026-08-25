@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { AgentConfig, ProviderApiKeys } from '../types/benchmark';
 import { MODEL_PRESETS } from '../utils/modelTracker';
-import { CatalogModel } from '../utils/modelCatalog';
+import { CatalogModel, getActiveCatalogModels } from '../utils/modelCatalog';
 import { ModelSelectorDropdown } from './ModelSelectorDropdown';
+import {
+  scrapeAndWriteOpenRouterModelsLive,
+  getLastScrapedTimestamp,
+  loadSavedScrapedModels,
+  OPENROUTER_SCRAPE_EVENT,
+} from '../utils/openRouterScraper';
 import {
   PROVIDER_METAS,
   getStoredApiKeys,
@@ -32,6 +38,7 @@ import {
   ChevronUp,
   Sparkles,
   Cpu,
+  Zap,
 } from 'lucide-react';
 
 interface MatchupConfigModalProps {
@@ -76,6 +83,45 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
   const [tokenSearchQuery, setTokenSearchQuery] = useState<string>('');
   const [tokenCategoryFilter, setTokenCategoryFilter] = useState<'all' | 'tier1' | 'regional' | 'universal'>('all');
   const [savedBanner, setSavedBanner] = useState<boolean>(false);
+  
+  // Real-time Live Scraper State
+  const [isScrapingLive, setIsScrapingLive] = useState<boolean>(false);
+  const [liveScrapedCount, setLiveScrapedCount] = useState<number>(() => loadSavedScrapedModels().length);
+  const [lastScrapedAt, setLastScrapedAt] = useState<number | null>(() => getLastScrapedTimestamp());
+  const [liveScrapeNotice, setLiveScrapeNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleScrapeEvent = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        setLiveScrapedCount(detail.count || detail.models?.length || 0);
+        setLastScrapedAt(detail.timestamp || Date.now());
+      }
+    };
+    window.addEventListener(OPENROUTER_SCRAPE_EVENT, handleScrapeEvent);
+    return () => {
+      window.removeEventListener(OPENROUTER_SCRAPE_EVENT, handleScrapeEvent);
+    };
+  }, []);
+
+  const handleLiveScrapeOpenRouter = async () => {
+    if (isScrapingLive) return;
+    setIsScrapingLive(true);
+    setLiveScrapeNotice(null);
+    try {
+      const res = await scrapeAndWriteOpenRouterModelsLive(apiKeys.openrouter);
+      setLiveScrapedCount(res.count);
+      setLastScrapedAt(res.timestamp);
+      setLiveScrapeNotice(`Successfully live scraped and synchronized ${res.count} models in real time!`);
+      setTimeout(() => setLiveScrapeNotice(null), 4000);
+    } catch (err: any) {
+      console.error('Error scraping OpenRouter models live:', err);
+      setLiveScrapeNotice(`Live scrape failed: ${err?.message || 'Could not fetch OpenRouter API'}`);
+      setTimeout(() => setLiveScrapeNotice(null), 4000);
+    } finally {
+      setIsScrapingLive(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -330,6 +376,31 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                     <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-amber-500"></div>
                   </label>
                 </div>
+              </div>
+
+              {/* Live OpenRouter Scraper Quick Bar */}
+              <div className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3.5 py-2 dark:border-slate-800 dark:bg-slate-800/50">
+                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[11px] font-semibold">
+                    Live OpenRouter Catalog: <strong className="text-slate-900 dark:text-white font-bold">{liveScrapedCount > 0 ? `${liveScrapedCount} models synced` : 'Default catalog active'}</strong>
+                  </span>
+                  {lastScrapedAt && (
+                    <span className="hidden sm:inline text-[10px] text-slate-500 dark:text-slate-400">
+                      (Synced {new Date(lastScrapedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleLiveScrapeOpenRouter}
+                  disabled={isScrapingLive}
+                  className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isScrapingLive ? 'animate-spin' : ''}`} />
+                  <span>{isScrapingLive ? 'Refreshing...' : 'Refresh'}</span>
+                </button>
               </div>
 
               {/* Agent Alpha Config */}
@@ -731,6 +802,60 @@ export const MatchupConfigModal: React.FC<MatchupConfigModalProps> = ({
                               Models: {provider.recommendedModels.join(', ')}
                             </span>
                           </div>
+
+                          {/* Live OpenRouter Real-Time Scraper Box */}
+                          {isOpenRouter && (
+                            <div className="mt-3.5 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/30">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-950 dark:text-indigo-200">
+                                    <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                                    <span>Live Model Scraper (Real-Time Catalog)</span>
+                                    <span className="rounded bg-indigo-200/80 px-1.5 py-0.2 text-[9px] font-mono text-indigo-900 dark:bg-indigo-900 dark:text-indigo-200">
+                                      Real-Time Sync
+                                    </span>
+                                  </div>
+                                  <p className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
+                                    Scrapes and updates all latest frontier, open-weights, and preview models from{' '}
+                                    <code className="rounded bg-white/80 dark:bg-slate-800 px-1 py-0.5 font-mono text-[10px] text-indigo-700 dark:text-indigo-300">
+                                      openrouter.ai/api/v1/models
+                                    </code>{' '}
+                                    directly into the benchmark dropdowns in real time.
+                                  </p>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={handleLiveScrapeOpenRouter}
+                                  disabled={isScrapingLive}
+                                  className="flex items-center justify-center gap-1.5 shrink-0 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
+                                >
+                                  <RefreshCw className={`h-3.5 w-3.5 ${isScrapingLive ? 'animate-spin' : ''}`} />
+                                  <span>{isScrapingLive ? 'Refreshing...' : 'Refresh'}</span>
+                                </button>
+                              </div>
+
+                              <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-indigo-100/80 pt-2 dark:border-indigo-900/40 text-[10px] text-slate-600 dark:text-slate-400">
+                                <div className="flex items-center gap-1">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                  <span>
+                                    Catalog: <strong className="text-slate-900 dark:text-white font-semibold">{liveScrapedCount > 0 ? `${liveScrapedCount} models cached` : 'Default catalog active'}</strong>
+                                  </span>
+                                </div>
+                                {lastScrapedAt && (
+                                  <div>
+                                    Last synced: {new Date(lastScrapedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {liveScrapeNotice && (
+                                <div className="mt-2 rounded-lg bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-900 dark:bg-emerald-950/80 dark:text-emerald-300">
+                                  {liveScrapeNotice}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
