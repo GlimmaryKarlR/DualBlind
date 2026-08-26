@@ -23,6 +23,7 @@ interface ArenaHeaderProps {
   agentA: AgentConfig;
   agentB: AgentConfig;
   onOpenConfig: () => void;
+  onRandomize?: () => void;
   isRunning: boolean;
   isPaused: boolean;
   isUncapped: boolean;
@@ -44,6 +45,7 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
   agentA,
   agentB,
   onOpenConfig,
+  onRandomize,
   isRunning,
   isPaused,
   isUncapped,
@@ -182,8 +184,22 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Side: Uncapped Toggle, Primary Execution Controls */}
+        {/* Right Side: Randomize, Uncapped Toggle, Primary Execution Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Randomize Matchup & Question Button */}
+          {onRandomize && (
+            <button
+              id="randomize-models-and-question-btn"
+              onClick={onRandomize}
+              disabled={isRunning}
+              className="flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-xs font-bold text-purple-700 hover:bg-purple-100 hover:border-purple-300 dark:border-purple-800 dark:bg-purple-950/50 dark:text-purple-300 dark:hover:bg-purple-900/60 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed group shadow-2xs"
+              title="Pick random models for Agent Alpha & Beta and a random challenge question"
+            >
+              <Shuffle className="h-3.5 w-3.5 text-purple-600 transition-transform duration-300 group-hover:rotate-45 dark:text-purple-400" />
+              <span>Randomize</span>
+            </button>
+          )}
+
           {/* Mode Pill */}
           <button
             onClick={onToggleUncapped}
