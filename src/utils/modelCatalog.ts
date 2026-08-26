@@ -593,8 +593,15 @@ function parseModelEntry(raw: string, index: number): CatalogModel {
     .replace(/[^a-z0-9.]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-  const isGoogleAutomated = provider === 'google' && !name.toLowerCase().includes('batch') && !name.toLowerCase().includes('image');
-  const modelCode = isGoogleAutomated ? idSlug : resolveOpenRouterModel(raw);
+  let modelCode = resolveOpenRouterModel(raw);
+  if (provider === 'google') {
+    const lower = raw.toLowerCase();
+    if (lower.includes('pro')) modelCode = 'gemini-3.1-pro-preview';
+    else if (lower.includes('3.7')) modelCode = 'gemini-3.7-flash';
+    else if (lower.includes('3.6')) modelCode = 'gemini-3.6-flash';
+    else if (lower.includes('3.5')) modelCode = 'gemini-3.5-flash';
+    else modelCode = 'gemini-3.6-flash';
+  }
 
   return {
     id: idSlug || `model-${index}`,
