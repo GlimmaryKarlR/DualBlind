@@ -132,7 +132,8 @@ async function callOpenAICompatibleDirect(
   apiKey: string,
   modelName: string,
   messages: Array<{ role: string; content: string }>,
-  temperature: number = 0.4
+  temperature: number = 0.4,
+  retryCount: number = 0
 ): Promise<{ text: string; inputTokens: number; outputTokens: number; modelUsed: string }> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -160,12 +161,25 @@ async function callOpenAICompatibleDirect(
   });
 
   if (!response.ok) {
+    if (response.status === 429 && retryCount < 2) {
+      // Free tier rate limits or brief bursts: pause and retry
+      await new Promise((r) => setTimeout(r, 1500 + retryCount * 1000));
+      return callOpenAICompatibleDirect(endpoint, apiKey, modelName, messages, temperature, retryCount + 1);
+    }
+
     const errorData = await response.json().catch(() => ({}));
-    const errorMsg =
+    let errorMsg =
       errorData?.error?.message ||
       errorData?.message ||
       (typeof errorData === 'string' ? errorData : '') ||
       `${modelName} endpoint returned HTTP ${response.status} (${response.statusText})`;
+    
+    if (response.status === 429) {
+      errorMsg = `OpenRouter Free Tier rate limit or provider busy for ${modelName}. Wait a moment or try another free model like deepseek/deepseek-chat:free or meta-llama/llama-3.3-70b-instruct:free. (${errorMsg})`;
+    } else if (response.status === 402) {
+      errorMsg = `OpenRouter account requires credits for ${modelName}. If you want 100% free models, select one with the (free) badge or filter by '✨ Free' in the dropdown. (${errorMsg})`;
+    }
+
     throw new Error(errorMsg);
   }
 
