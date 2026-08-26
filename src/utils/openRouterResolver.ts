@@ -78,8 +78,20 @@ const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
     'openai/gpt-4-turbo',
     'openai/gpt-3.5-turbo',
   ],
+  nvidia: [
+    'nvidia/nemotron-3-nano-30b-a3b:free',
+    'nvidia/nemotron-3-nano-30b-a3b',
+    'nvidia/nemotron-3-super:free',
+    'nvidia/nemotron-3-super',
+    'nvidia/nemotron-3-ultra:free',
+    'nvidia/nemotron-3-ultra',
+    'nvidia/nemotron-3.5-lightning:free',
+    'nvidia/nemotron-3.5-lightning',
+  ],
   deepseek: [
+    'deepseek/deepseek-r1:free',
     'deepseek/deepseek-r1',
+    'deepseek/deepseek-chat:free',
     'deepseek/deepseek-chat',
     'deepseek/deepseek-coder',
   ],
@@ -248,6 +260,7 @@ function detectCreator(raw: string): string | null {
   if (lower.includes('mistral') || lower.includes('codestral') || lower.includes('ministral') || lower.includes('mixtral')) return 'mistralai';
   if (lower.includes('google') || lower.includes('gemini') || lower.includes('gemma')) return 'google';
   if (lower.includes('amazon') || lower.includes('nova')) return 'amazon';
+  if (lower.includes('nvidia') || lower.includes('nemotron')) return 'nvidia';
   if (lower.includes('microsoft') || lower.includes('phi') || lower.includes('wizardlm')) return 'microsoft';
   if (lower.includes('cohere') || lower.includes('command')) return 'cohere';
   if (lower.includes('minimax')) return 'minimax';
@@ -330,13 +343,22 @@ export function resolveOpenRouterModel(modelInput: string): string {
   let bestSlug = '';
   let highestScore = 0;
 
+  const wantsFree = input.toLowerCase().includes('free');
+
   for (const slug of candidates) {
     const slugTokens = tokenize(slug);
     let score = 0;
 
+    const isSlugFree = slug.includes(':free') || slug.includes('free');
+    if (wantsFree && isSlugFree) {
+      score += 25;
+    } else if (!wantsFree && isSlugFree) {
+      score -= 10;
+    }
+
     for (const token of inputTokens) {
       // Ignore common noise words
-      if (['model', 'v1', 'preview', 'latest', 'chat', 'instruct'].includes(token)) continue;
+      if (['model', 'v1', 'preview', 'latest', 'chat', 'instruct', 'free'].includes(token)) continue;
 
       if (slugTokens.includes(token)) {
         // High priority for version numbers (e.g. k3, 4.20, 70b, r1, 3.7)
