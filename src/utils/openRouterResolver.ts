@@ -154,6 +154,18 @@ const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
   nousresearch: [
     'nousresearch/hermes-3-llama-3.1-405b',
   ],
+  orcarouter: [
+    'orcarouter/auto-balanced',
+    'orcarouter/high-reasoning',
+    'orcarouter/fast-coding',
+    'orcarouter/lowest-cost',
+    'orcarouter/claude-sonnet-3.7',
+    'orcarouter/deepseek-r1',
+    'orcarouter/gpt-4o',
+    'orcarouter/llama-3.3-70b',
+    'orcarouter/qwen-2.5-coder-32b',
+    'orcarouter/kimi-k2.5',
+  ],
 };
 
 // Flattened list of all known fallback models
@@ -225,6 +237,7 @@ function tokenize(str: string): string[] {
  */
 function detectCreator(raw: string): string | null {
   const lower = raw.toLowerCase();
+  if (lower.includes('orcarouter') || lower.includes('orca router') || lower.includes('orca-router') || lower.startsWith('orca/')) return 'orcarouter';
   if (lower.includes('moonshot') || lower.includes('kimi')) return 'moonshotai';
   if (lower.includes('xai') || lower.includes('spacexai') || lower.includes('grok')) return 'x-ai';
   if (lower.includes('anthropic') || lower.includes('claude')) return 'anthropic';

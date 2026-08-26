@@ -142,6 +142,10 @@ async function callOpenAICompatibleDirect(
   if (endpoint.includes('openrouter.ai')) {
     headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://dualblind.ai';
     headers['X-Title'] = 'DualBlind Multi-Agent Benchmark';
+  } else if (endpoint.includes('orcarouter.com') || endpoint.includes('orcarouter')) {
+    headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://dualblind.ai';
+    headers['X-Title'] = 'DualBlind Multi-Agent Benchmark';
+    headers['X-Router-Provider'] = 'OrcaRouter';
   }
 
   const response = await fetch(endpoint, {
@@ -470,12 +474,55 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
     inputTokens = res.inputTokens;
     outputTokens = res.outputTokens;
     modelUsed = res.modelUsed;
+  } else if (provider === 'orcarouter' && apiKeys.orcarouter) {
+    const endpoint = apiKeys.orcarouterEndpoint || 'https://api.orcarouter.com/v1/chat/completions';
+    const targetModel = resolveOpenRouterModel(agent.model);
+    const res = await callOpenAICompatibleDirect(
+      endpoint,
+      apiKeys.orcarouter,
+      targetModel,
+      chatMessages,
+      agent.temperature ?? 0.4
+    );
+    textResult = res.text;
+    inputTokens = res.inputTokens;
+    outputTokens = res.outputTokens;
+    modelUsed = res.modelUsed;
+  } else if (apiKeys.orcarouter && provider === 'orcarouter') {
+    const endpoint = apiKeys.orcarouterEndpoint || 'https://api.orcarouter.com/v1/chat/completions';
+    const targetModel = resolveOpenRouterModel(agent.model);
+    const res = await callOpenAICompatibleDirect(
+      endpoint,
+      apiKeys.orcarouter,
+      targetModel,
+      chatMessages,
+      agent.temperature ?? 0.4
+    );
+    textResult = res.text;
+    inputTokens = res.inputTokens;
+    outputTokens = res.outputTokens;
+    modelUsed = res.modelUsed;
   } else if (apiKeys.openrouter) {
     // OpenRouter inference - directly surface errors if model crashes or fails
     const targetModel = resolveOpenRouterModel(agent.model);
     const res = await callOpenAICompatibleDirect(
       'https://openrouter.ai/api/v1/chat/completions',
       apiKeys.openrouter,
+      targetModel,
+      chatMessages,
+      agent.temperature ?? 0.4
+    );
+    textResult = res.text;
+    inputTokens = res.inputTokens;
+    outputTokens = res.outputTokens;
+    modelUsed = res.modelUsed;
+  } else if (apiKeys.orcarouter) {
+    // OrcaRouter fallback inference
+    const endpoint = apiKeys.orcarouterEndpoint || 'https://api.orcarouter.com/v1/chat/completions';
+    const targetModel = resolveOpenRouterModel(agent.model);
+    const res = await callOpenAICompatibleDirect(
+      endpoint,
+      apiKeys.orcarouter,
       targetModel,
       chatMessages,
       agent.temperature ?? 0.4

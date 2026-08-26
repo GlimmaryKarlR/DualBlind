@@ -232,6 +232,17 @@ function resolveOpenRouterModel(modelName: string): string {
 
   const lower = m.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
 
+  // OrcaRouter Ensembles & Routing
+  if (lower.includes('orcarouter') || lower.includes('orca-router') || lower.includes('orca router') || lower.startsWith('orca/')) {
+    if (lower.includes('reasoning') || lower.includes('r1')) return 'orcarouter/high-reasoning';
+    if (lower.includes('code') || lower.includes('swe') || lower.includes('coder')) return 'orcarouter/fast-coding';
+    if (lower.includes('cost') || lower.includes('fallback')) return 'orcarouter/lowest-cost';
+    if (lower.includes('sonnet') || lower.includes('claude')) return 'orcarouter/claude-sonnet-3.7';
+    if (lower.includes('gpt-4o') || lower.includes('omni')) return 'orcarouter/gpt-4o';
+    if (lower.includes('llama')) return 'orcarouter/llama-3.3-70b';
+    return 'orcarouter/auto-balanced';
+  }
+
   // Moonshot / Kimi
   if (lower.includes('k3') || lower.includes('kimi-k3')) return 'moonshotai/kimi-k3';
   if (lower.includes('k2-5') || lower.includes('k2.5') || lower.includes('k2-6') || lower.includes('k2.6')) return 'moonshotai/kimi-k2.5';
@@ -748,6 +759,32 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       responseText = mistralRes.text;
       usage = mistralRes.usageMetadata;
       modelUsed = mistralRes.modelUsed;
+    } else if (provider === 'orcarouter' && apiKeys?.orcarouter) {
+      const endpoint = apiKeys.orcarouterEndpoint || process.env.ORCAROUTER_BASE_URL || 'https://api.orcarouter.com/v1/chat/completions';
+      const targetModel = resolveOpenRouterModel(agent.model);
+      const orcaRes = await callOpenAICompatible(
+        endpoint,
+        apiKeys.orcarouter,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = orcaRes.text;
+      usage = orcaRes.usageMetadata;
+      modelUsed = orcaRes.modelUsed;
+    } else if (apiKeys?.orcarouter && provider === 'orcarouter') {
+      const endpoint = apiKeys.orcarouterEndpoint || process.env.ORCAROUTER_BASE_URL || 'https://api.orcarouter.com/v1/chat/completions';
+      const targetModel = resolveOpenRouterModel(agent.model);
+      const orcaRes = await callOpenAICompatible(
+        endpoint,
+        apiKeys.orcarouter,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = orcaRes.text;
+      usage = orcaRes.usageMetadata;
+      modelUsed = orcaRes.modelUsed;
     } else if (apiKeys?.openrouter) {
       const targetModel = resolveOpenRouterModel(agent.model);
       const openRouterRes = await callOpenAICompatible(
@@ -760,6 +797,19 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       responseText = openRouterRes.text;
       usage = openRouterRes.usageMetadata;
       modelUsed = openRouterRes.modelUsed;
+    } else if (apiKeys?.orcarouter) {
+      const endpoint = apiKeys.orcarouterEndpoint || process.env.ORCAROUTER_BASE_URL || 'https://api.orcarouter.com/v1/chat/completions';
+      const targetModel = resolveOpenRouterModel(agent.model);
+      const orcaRes = await callOpenAICompatible(
+        endpoint,
+        apiKeys.orcarouter,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = orcaRes.text;
+      usage = orcaRes.usageMetadata;
+      modelUsed = orcaRes.modelUsed;
     } else if (apiKeys?.customEndpoint?.baseUrl && apiKeys.customEndpoint.apiKey) {
       const endpoint = `${apiKeys.customEndpoint.baseUrl.replace(/\/$/, '')}/chat/completions`;
       const customRes = await callOpenAICompatible(
