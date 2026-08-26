@@ -146,18 +146,29 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
 
     return allGroups
       .map((group) => {
-        // Filter by brand button tab if active
-        if (activeBrandFilter !== 'all' && group.brand !== activeBrandFilter) {
+        // Filter by brand button tab if active (supporting 'free' virtual filter)
+        if (activeBrandFilter !== 'all' && activeBrandFilter !== 'free' && group.brand !== activeBrandFilter) {
           return null;
+        }
+
+        let brandModels = group.models;
+        if (activeBrandFilter === 'free') {
+          brandModels = brandModels.filter(
+            (m) => m.isFree || m.inputPricePerMillion === 0 || m.rawName.toLowerCase().includes('free')
+          );
+          if (brandModels.length === 0) return null;
         }
 
         // Filter models in brand by query
         if (!query) {
-          return group;
+          return {
+            ...group,
+            models: brandModels,
+          };
         }
 
         const matchesBrand = group.brand.toLowerCase().includes(query);
-        const matchingModels = group.models.filter((m) => {
+        const matchingModels = brandModels.filter((m) => {
           if (matchesBrand) return true;
           return (
             m.name.toLowerCase().includes(query) ||
@@ -239,6 +250,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
   // Major brands for quick filter pills
   const topBrands = [
     'all',
+    'free',
     'Google',
     'OpenAI',
     'Anthropic',
@@ -246,11 +258,11 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
     'Qwen',
     'xAI',
     'Meta',
+    'NVIDIA',
     'Mistral',
     'Moonshot AI',
     'MiniMax',
     'Z.ai',
-    'NVIDIA',
     'Amazon',
     'Microsoft',
     'ByteDance Seed',
@@ -400,21 +412,39 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
               const count =
                 brand === 'all'
                   ? allModelsPool.length
+                  : brand === 'free'
+                  ? allModelsPool.filter((m) => m.isFree || m.inputPricePerMillion === 0 || m.rawName.toLowerCase().includes('free')).length
                   : allModelsPool.filter((m) => m.brand === brand).length;
               if (brand !== 'all' && count === 0) return null;
+
+              const label =
+                brand === 'all'
+                  ? `All (${allModelsPool.length})`
+                  : brand === 'free'
+                  ? `✨ Free (${count})`
+                  : `${brand} (${count})`;
 
               return (
                 <button
                   key={brand}
                   type="button"
-                  onClick={() => setActiveBrandFilter(brand)}
+                  onClick={() => {
+                    setActiveBrandFilter(brand);
+                    if (brand === 'free') {
+                      expandAll();
+                    }
+                  }}
                   className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
                     isActive
-                      ? 'bg-indigo-600 text-white shadow-xs'
+                      ? brand === 'free'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-indigo-600 text-white shadow-xs'
+                      : brand === 'free'
+                      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-900/60'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
                   }`}
                 >
-                  {brand === 'all' ? `All (${allModelsPool.length})` : `${brand} (${count})`}
+                  {label}
                 </button>
               );
             })}
