@@ -133,7 +133,8 @@ async function callOpenAICompatibleDirect(
   modelName: string,
   messages: Array<{ role: string; content: string }>,
   temperature: number = 0.4,
-  retryCount: number = 0
+  retryCount: number = 0,
+  maxTokens: number = 2048
 ): Promise<{ text: string; inputTokens: number; outputTokens: number; modelUsed: string }> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -156,28 +157,77 @@ async function callOpenAICompatibleDirect(
       model: modelName,
       messages,
       temperature: Math.min(Math.max(temperature, 0), 1.0),
-      max_tokens: 2048,
+      max_tokens: maxTokens,
     }),
   });
 
   if (!response.ok) {
-    if (response.status === 429 && retryCount < 2) {
-      // Free tier rate limits or brief bursts: pause and retry
-      await new Promise((r) => setTimeout(r, 1500 + retryCount * 1000));
-      return callOpenAICompatibleDirect(endpoint, apiKey, modelName, messages, temperature, retryCount + 1);
-    }
-
     const errorData = await response.json().catch(() => ({}));
     let errorMsg =
       errorData?.error?.message ||
       errorData?.message ||
       (typeof errorData === 'string' ? errorData : '') ||
       `${modelName} endpoint returned HTTP ${response.status} (${response.statusText})`;
+
+    // 1. Auto-recovery: If a free model was retired by OpenRouter, auto-fallback to openrouter/free
+    if (
+      endpoint.includes('openrouter.ai') &&
+      retryCount < 2 &&
+      (errorMsg.toLowerCase().includes('unavailable for free') ||
+        errorMsg.toLowerCase().includes('model not found') ||
+        (response.status === 404 && modelName.includes(':free')))
+    ) {
+      console.warn(`[OpenRouter] ${modelName} is unavailable for free. Automatically routing to openrouter/free fallback.`);
+      return callOpenAICompatibleDirect(
+        endpoint,
+        apiKey,
+        'openrouter/free',
+        messages,
+        temperature,
+        retryCount + 1,
+        maxTokens
+      );
+    }
+
+    // 2. Auto-recovery: Token affordability limit on low-credit accounts
+    const affordMatch = errorMsg.match(/can only afford\s+(\d+)/i);
+    if (endpoint.includes('openrouter.ai') && affordMatch && affordMatch[1] && retryCount < 2) {
+      const affordableTokens = parseInt(affordMatch[1], 10);
+      if (affordableTokens > 80) {
+        const reducedTokens = Math.max(80, affordableTokens - 30);
+        console.warn(`[OpenRouter] Adjusting max_tokens to ${reducedTokens} due to account credit balance.`);
+        return callOpenAICompatibleDirect(
+          endpoint,
+          apiKey,
+          modelName,
+          messages,
+          temperature,
+          retryCount + 1,
+          reducedTokens
+        );
+      } else if (modelName.includes(':free') || modelName.includes('free')) {
+        return callOpenAICompatibleDirect(
+          endpoint,
+          apiKey,
+          'openrouter/free',
+          messages,
+          temperature,
+          retryCount + 1,
+          maxTokens
+        );
+      }
+    }
+
+    if (response.status === 429 && retryCount < 2) {
+      // Free tier rate limits or brief bursts: pause and retry
+      await new Promise((r) => setTimeout(r, 1500 + retryCount * 1000));
+      return callOpenAICompatibleDirect(endpoint, apiKey, modelName, messages, temperature, retryCount + 1, maxTokens);
+    }
     
     if (response.status === 429) {
-      errorMsg = `OpenRouter Free Tier rate limit or provider busy for ${modelName}. Wait a moment or try another free model like deepseek/deepseek-chat:free or meta-llama/llama-3.3-70b-instruct:free. (${errorMsg})`;
+      errorMsg = `OpenRouter Free Tier rate limit or provider busy for ${modelName}. Wait a moment or try another free model like openrouter/free, deepseek/deepseek-chat:free, or meta-llama/llama-3.3-70b-instruct:free. (${errorMsg})`;
     } else if (response.status === 402) {
-      errorMsg = `OpenRouter account requires credits for ${modelName}. If you want 100% free models, select one with the (free) badge or filter by '✨ Free' in the dropdown. (${errorMsg})`;
+      errorMsg = `OpenRouter account requires credits for ${modelName}. If you want 100% free models, select one with the (free) badge or choose OpenRouter Free Auto-Router. (${errorMsg})`;
     }
 
     throw new Error(errorMsg);
@@ -352,7 +402,12 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
   let modelUsed = agent.model || 'gemini-3.7-flash';
 
   // Execution routing
-  if (provider === 'google' && apiKeys.google) {
+  const isGoogleModel =
+    provider === 'google' ||
+    agent.brand?.toLowerCase() === 'google' ||
+    Boolean(agent.model?.toLowerCase().includes('gemini'));
+
+  if (isGoogleModel && apiKeys.google) {
     const googleKey = apiKeys.google || ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || '';
     if (!googleKey) {
       throw new Error(

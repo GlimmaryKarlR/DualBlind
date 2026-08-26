@@ -281,6 +281,70 @@ export default function App() {
     }, 4500);
   }, [agentA, agentB, allProblems, handleReset]);
 
+  // Randomize Free Matchup & Question (Picks 2 random distinct 100% free models + random benchmark question)
+  const handleRandomizeFreeMatchupAndProblem = useCallback(() => {
+    const catalog = getActiveCatalogModels();
+    const freeModels = catalog.filter(
+      (m) =>
+        m.isFree ||
+        m.tags.includes('Free') ||
+        m.name.toLowerCase().includes('(free)') ||
+        m.rawName.toLowerCase().includes('(free)') ||
+        m.modelCode.includes(':free') ||
+        m.modelCode === 'openrouter/free'
+    );
+    const candidatePool = freeModels.length > 0 ? freeModels : catalog;
+
+    const idxA = Math.floor(Math.random() * candidatePool.length);
+    let idxB = Math.floor(Math.random() * candidatePool.length);
+    if (candidatePool.length > 1 && idxB === idxA) {
+      idxB = (idxA + 1 + Math.floor(Math.random() * (candidatePool.length - 1))) % candidatePool.length;
+    }
+
+    const modelA = candidatePool[idxA];
+    const modelB = candidatePool[idxB];
+
+    const randomProblem =
+      allProblems[Math.floor(Math.random() * allProblems.length)] || allProblems[0];
+
+    const newAgentA: AgentConfig = {
+      ...agentA,
+      model: modelA.modelCode || modelA.id,
+      provider: modelA.provider,
+      brand: modelA.brand,
+      isManualExternal: false,
+      customBrand: modelA.provider === 'custom' ? modelA.brand : undefined,
+      customModel: modelA.provider === 'custom' ? modelA.name : undefined,
+    };
+
+    const newAgentB: AgentConfig = {
+      ...agentB,
+      model: modelB.modelCode || modelB.id,
+      provider: modelB.provider,
+      brand: modelB.brand,
+      isManualExternal: false,
+      customBrand: modelB.provider === 'custom' ? modelB.brand : undefined,
+      customModel: modelB.provider === 'custom' ? modelB.name : undefined,
+    };
+
+    setAgentA(newAgentA);
+    setAgentB(newAgentB);
+    setCurrentProblem(randomProblem);
+    setSelectedTopicFilter('all');
+    handleReset();
+
+    setRandomizeNotice({
+      agentAName: `${modelA.brand}: ${modelA.name}`,
+      agentBName: `${modelB.brand}: ${modelB.name}`,
+      problemTitle: randomProblem.title,
+      suiteName: randomProblem.suite || randomProblem.topic.toUpperCase(),
+    });
+
+    setTimeout(() => {
+      setRandomizeNotice(null);
+    }, 4500);
+  }, [agentA, agentB, allProblems, handleReset]);
+
   // Topic Roulette / Random Challenge Launcher
   const handleRandomChallenge = useCallback(
     (topic?: TopicCategory) => {
@@ -1060,18 +1124,11 @@ export default function App() {
               agentB={agentB}
               onOpenConfig={() => setIsConfigModalOpen(true)}
               onRandomize={handleRandomizeMatchupAndProblem}
+              onRandomizeFree={handleRandomizeFreeMatchupAndProblem}
               isRunning={isRunning}
               isPaused={isPaused}
-              isUncapped={isUncapped}
-              onToggleUncapped={() => {
-                setIsUncapped(!isUncapped);
-                handleReset();
-              }}
               onStartAutoRun={handleStartAutoRun}
               onPause={handlePause}
-              onStepTurn={handleStepTurn}
-              onReset={handleReset}
-              onAbortInfiniteBurn={handleFlagLoopAndAbort}
               turnCount={turns.length}
               maxTurns={maxTurns}
             />

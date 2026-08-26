@@ -4,13 +4,9 @@ import {
   Crosshair,
   Shapes,
   Shuffle,
-  Sliders,
+  Sparkles,
   Play,
   Pause,
-  RotateCcw,
-  FastForward,
-  Infinity,
-  Flame,
 } from 'lucide-react';
 import { BenchmarkProblem, TopicCategory, AgentConfig } from '../types/benchmark';
 import { BENCHMARK_PROBLEMS } from '../data/benchmarkProblems';
@@ -22,17 +18,13 @@ interface ArenaHeaderProps {
   onSelectProblem: (problem: BenchmarkProblem) => void;
   agentA: AgentConfig;
   agentB: AgentConfig;
-  onOpenConfig: () => void;
+  onOpenConfig?: () => void;
   onRandomize?: () => void;
+  onRandomizeFree?: () => void;
   isRunning: boolean;
   isPaused: boolean;
-  isUncapped: boolean;
-  onToggleUncapped: () => void;
   onStartAutoRun: () => void;
   onPause: () => void;
-  onStepTurn: () => void;
-  onReset: () => void;
-  onAbortInfiniteBurn?: () => void;
   turnCount: number;
   maxTurns: number;
 }
@@ -46,15 +38,11 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
   agentB,
   onOpenConfig,
   onRandomize,
+  onRandomizeFree,
   isRunning,
   isPaused,
-  isUncapped,
-  onToggleUncapped,
   onStartAutoRun,
   onPause,
-  onStepTurn,
-  onReset,
-  onAbortInfiniteBurn,
   turnCount,
   maxTurns,
 }) => {
@@ -184,7 +172,7 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Side: Randomize, Uncapped Toggle, Primary Execution Controls */}
+        {/* Right Side: Randomize, Free Randomize, Primary Execution Controls */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Randomize Matchup & Question Button */}
           {onRandomize && (
@@ -200,29 +188,17 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
             </button>
           )}
 
-          {/* Mode Pill */}
-          <button
-            onClick={onToggleUncapped}
-            disabled={isRunning}
-            className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer border ${
-              isUncapped
-                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300'
-                : 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
-            }`}
-            title="Toggle Uncapped Consensus vs Capped Turns"
-          >
-            <Infinity className="h-3.5 w-3.5" />
-            <span>{isUncapped ? 'Uncapped Mode' : `Capped (${maxTurns}T)`}</span>
-          </button>
-
-          {/* Turn Step */}
-          {!isRunning && (
+          {/* Free Randomize Matchup & Question Button */}
+          {onRandomizeFree && (
             <button
-              onClick={onStepTurn}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 cursor-pointer"
+              id="randomize-free-models-and-question-btn"
+              onClick={onRandomizeFree}
+              disabled={isRunning}
+              className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-900/60 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed group shadow-2xs"
+              title="Pick random 100% FREE models for Agent Alpha & Beta and a random challenge question"
             >
-              <FastForward className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Step</span>
+              <Sparkles className="h-3.5 w-3.5 text-emerald-600 transition-transform duration-300 group-hover:scale-110 dark:text-emerald-400" />
+              <span>Free Randomize</span>
             </button>
           )}
 
@@ -244,16 +220,6 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
               <span>Pause</span>
             </button>
           )}
-
-          {/* Reset */}
-          <button
-            onClick={onReset}
-            disabled={isRunning}
-            className="flex items-center gap-1 rounded-xl p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer disabled:opacity-40"
-            title="Reset Arena"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-          </button>
         </div>
       </div>
     </div>

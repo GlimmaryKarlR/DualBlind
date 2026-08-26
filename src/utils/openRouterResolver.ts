@@ -78,17 +78,17 @@ const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
     'openai/gpt-4-turbo',
     'openai/gpt-3.5-turbo',
   ],
+  openrouter: [
+    'openrouter/free',
+    'openrouter/auto',
+  ],
   nvidia: [
-    'nvidia/nemotron-3-nano-30b-a3b:free',
-    'nvidia/nemotron-3-nano-30b-a3b',
-    'nvidia/nemotron-3-super:free',
-    'nvidia/nemotron-3-super',
-    'nvidia/nemotron-3-ultra:free',
-    'nvidia/nemotron-3-ultra',
-    'nvidia/nemotron-3.5-lightning:free',
-    'nvidia/nemotron-3.5-lightning',
     'nvidia/llama-3.1-nemotron-70b-instruct:free',
     'nvidia/llama-3.1-nemotron-70b-instruct',
+    'nvidia/nemotron-3-nano-30b-a3b',
+    'nvidia/nemotron-3-super',
+    'nvidia/nemotron-3-ultra',
+    'nvidia/nemotron-3.5-lightning',
   ],
   deepseek: [
     'deepseek/deepseek-r1:free',
@@ -205,8 +205,34 @@ const ALL_FALLBACK_SLUGS = Object.values(CURATED_OPENROUTER_MODELS).flat();
 
 // In-memory cache for live OpenRouter models list
 let liveOpenRouterModelsCache: string[] = [...ALL_FALLBACK_SLUGS];
+let liveFreeOpenRouterModelsCache: string[] = [
+  'openrouter/free',
+  'nvidia/llama-3.1-nemotron-70b-instruct:free',
+  'deepseek/deepseek-r1:free',
+  'deepseek/deepseek-chat:free',
+  'deepseek/deepseek-r1-distill-llama-70b:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'meta-llama/llama-3.1-8b-instruct:free',
+  'qwen/qwen-2.5-72b-instruct:free',
+  'qwen/qwq-32b:free',
+  'mistralai/mistral-small-24b-instruct-2501:free',
+  'mistralai/mistral-7b-instruct:free',
+  'google/gemini-2.0-flash-exp:free',
+  'google/gemma-2-9b-it:free',
+  'microsoft/phi-3-mini-128k-instruct:free',
+  'cognitivecomputations/dolphin3.0-r1-mistral-24b:free',
+  'poolside/laguna-s-2.1:free',
+  'poolside/laguna-xs-2.1:free',
+];
 let isFetchingLiveModels = false;
 let lastFetchTime = 0;
+
+/**
+ * Returns list of verified free OpenRouter slugs
+ */
+export function getLiveFreeOpenRouterModels(): string[] {
+  return liveFreeOpenRouterModelsCache;
+}
 
 /**
  * Fetches live models directly from OpenRouter API and caches them in memory.
@@ -232,6 +258,20 @@ export async function syncLiveOpenRouterModels(): Promise<string[]> {
       const data = await res.json();
       if (Array.isArray(data.data)) {
         const liveSlugs = data.data.map((m: any) => m.id).filter(Boolean);
+        const freeSlugs = data.data
+          .filter((m: any) => {
+            const isZeroCost =
+              (m.pricing?.prompt === '0' || m.pricing?.prompt === 0) &&
+              (m.pricing?.completion === '0' || m.pricing?.completion === 0);
+            const hasFreeSuffix = typeof m.id === 'string' && m.id.endsWith(':free');
+            return isZeroCost || hasFreeSuffix || m.id === 'openrouter/free';
+          })
+          .map((m: any) => m.id);
+
+        if (freeSlugs.length > 0) {
+          liveFreeOpenRouterModelsCache = Array.from(new Set([...freeSlugs, 'openrouter/free']));
+        }
+
         if (liveSlugs.length > 0) {
           liveOpenRouterModelsCache = Array.from(new Set([...liveSlugs, ...ALL_FALLBACK_SLUGS]));
           lastFetchTime = now;
@@ -328,6 +368,47 @@ export function resolveOpenRouterModel(modelInput: string): string {
   // 2. Identify the creator/provider
   const creator = detectCreator(input);
   const lower = input.toLowerCase().replace(/[^a-z0-9.:]+/g, '-');
+
+  // Direct high-accuracy resolution for special creators
+  if (lower.includes('free-auto-router') || lower.includes('openrouter-free') || input === 'openrouter/free') {
+    return 'openrouter/free';
+  }
+
+  if (creator === 'nvidia') {
+    if (lower.includes('free') || lower.includes('llama-3.1-nemotron-70b') || lower.includes('nemotron-70b')) {
+      return 'nvidia/llama-3.1-nemotron-70b-instruct:free';
+    }
+    if (lower.includes('nano') || lower.includes('30b')) {
+      return 'nvidia/nemotron-3-nano-30b-a3b';
+    }
+    if (lower.includes('super')) {
+      return 'nvidia/nemotron-3-super';
+    }
+    if (lower.includes('ultra')) {
+      return 'nvidia/nemotron-3-ultra';
+    }
+    if (lower.includes('lightning')) {
+      return 'nvidia/nemotron-3.5-lightning';
+    }
+    return 'nvidia/llama-3.1-nemotron-70b-instruct:free';
+  }
+
+  if (creator === 'deepseek') {
+    if (lower.includes('r1-distill-llama-70b')) return 'deepseek/deepseek-r1-distill-llama-70b:free';
+    if (lower.includes('r1')) return lower.includes('free') ? 'deepseek/deepseek-r1:free' : 'deepseek/deepseek-r1';
+    if (lower.includes('chat') || lower.includes('v3') || lower.includes('v4')) return lower.includes('free') ? 'deepseek/deepseek-chat:free' : 'deepseek/deepseek-chat';
+  }
+
+  if (creator === 'meta-llama') {
+    if (lower.includes('3.3') || lower.includes('3-3')) return lower.includes('free') ? 'meta-llama/llama-3.3-70b-instruct:free' : 'meta-llama/llama-3.3-70b-instruct';
+    if (lower.includes('8b')) return lower.includes('free') ? 'meta-llama/llama-3.1-8b-instruct:free' : 'meta-llama/llama-3.1-8b-instruct';
+  }
+
+  if (creator === 'qwen') {
+    if (lower.includes('qwq')) return 'qwen/qwq-32b:free';
+    if (lower.includes('coder-32b') || lower.includes('coder 32b')) return lower.includes('free') ? 'qwen/qwen-2.5-coder-32b-instruct:free' : 'qwen/qwen-2.5-coder-32b-instruct';
+    if (lower.includes('72b')) return lower.includes('free') ? 'qwen/qwen-2.5-72b-instruct:free' : 'qwen/qwen-2.5-72b-instruct';
+  }
 
   // Direct high-accuracy resolution for Anthropic Claude series
   if (creator === 'anthropic') {
