@@ -177,7 +177,16 @@ const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
     'xiaomi/mimo-v2.5-pro',
   ],
   thudm: [
-    'thudm/glm-4-9b-chat',
+    'z-ai/glm-4-9b-chat',
+  ],
+  poolside: [
+    'poolside/laguna-s-2.1:free',
+    'poolside/laguna-xs-2.1:free',
+    'poolside/laguna-xs-2.1',
+  ],
+  liquid: [
+    'liquid/lfm-40b:free',
+    'liquid/lfm-7b',
   ],
   perplexity: [
     'perplexity/sonar',
@@ -205,25 +214,36 @@ const ALL_FALLBACK_SLUGS = Object.values(CURATED_OPENROUTER_MODELS).flat();
 
 // In-memory cache for live OpenRouter models list
 let liveOpenRouterModelsCache: string[] = [...ALL_FALLBACK_SLUGS];
-let liveFreeOpenRouterModelsCache: string[] = [
-  'openrouter/free',
-  'nvidia/llama-3.1-nemotron-70b-instruct:free',
-  'deepseek/deepseek-r1:free',
-  'deepseek/deepseek-chat:free',
-  'deepseek/deepseek-r1-distill-llama-70b:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'meta-llama/llama-3.1-8b-instruct:free',
-  'qwen/qwen-2.5-72b-instruct:free',
-  'qwen/qwq-32b:free',
-  'mistralai/mistral-small-24b-instruct-2501:free',
-  'mistralai/mistral-7b-instruct:free',
-  'google/gemini-2.0-flash-exp:free',
-  'google/gemma-2-9b-it:free',
-  'microsoft/phi-3-mini-128k-instruct:free',
-  'cognitivecomputations/dolphin3.0-r1-mistral-24b:free',
-  'poolside/laguna-s-2.1:free',
-  'poolside/laguna-xs-2.1:free',
+
+export interface FreeModelDefinition {
+  brand: string;
+  name: string;
+  slug: string;
+  tags?: string[];
+}
+
+export const VERIFIED_FREE_MODELS_POOL: FreeModelDefinition[] = [
+  { brand: 'OpenRouter', name: 'Free Auto-Router (free)', slug: 'openrouter/free', tags: ['Free', 'Universal'] },
+  { brand: 'NVIDIA', name: 'Llama 3.1 Nemotron 70B (free)', slug: 'nvidia/llama-3.1-nemotron-70b-instruct:free', tags: ['Free', '70B'] },
+  { brand: 'DeepSeek', name: 'DeepSeek Chat (free)', slug: 'deepseek/deepseek-chat:free', tags: ['Free', 'Chat'] },
+  { brand: 'DeepSeek', name: 'DeepSeek R1 (free)', slug: 'deepseek/deepseek-r1:free', tags: ['Free', 'Reasoning'] },
+  { brand: 'DeepSeek', name: 'DeepSeek R1 Distill Llama 70B (free)', slug: 'deepseek/deepseek-r1-distill-llama-70b:free', tags: ['Free', 'Reasoning', '70B'] },
+  { brand: 'Meta', name: 'Llama 3.3 70B Instruct (free)', slug: 'meta-llama/llama-3.3-70b-instruct:free', tags: ['Free', '70B'] },
+  { brand: 'Meta', name: 'Llama 3.1 8B Instruct (free)', slug: 'meta-llama/llama-3.1-8b-instruct:free', tags: ['Free', 'Fast'] },
+  { brand: 'Qwen', name: 'Qwen 2.5 72B Instruct (free)', slug: 'qwen/qwen-2.5-72b-instruct:free', tags: ['Free', '72B'] },
+  { brand: 'Qwen', name: 'Qwen 2.5 Coder 32B (free)', slug: 'qwen/qwen-2.5-coder-32b-instruct:free', tags: ['Free', 'Code'] },
+  { brand: 'Qwen', name: 'QwQ 32B Reasoning (free)', slug: 'qwen/qwq-32b:free', tags: ['Free', 'Reasoning'] },
+  { brand: 'Mistral', name: 'Mistral Small 24B (free)', slug: 'mistralai/mistral-small-24b-instruct-2501:free', tags: ['Free'] },
+  { brand: 'Mistral', name: 'Mistral 7B Instruct (free)', slug: 'mistralai/mistral-7b-instruct:free', tags: ['Free', 'Fast'] },
+  { brand: 'Google', name: 'Gemini 2.0 Flash Exp (free)', slug: 'google/gemini-2.0-flash-exp:free', tags: ['Free', 'Fast'] },
+  { brand: 'Google', name: 'Gemma 2 9B (free)', slug: 'google/gemma-2-9b-it:free', tags: ['Free'] },
+  { brand: 'Microsoft', name: 'Phi 3 Mini 128k (free)', slug: 'microsoft/phi-3-mini-128k-instruct:free', tags: ['Free'] },
+  { brand: 'CognitiveComputations', name: 'Dolphin 3.0 R1 Mistral 24B (free)', slug: 'cognitivecomputations/dolphin3.0-r1-mistral-24b:free', tags: ['Free', 'Reasoning'] },
+  { brand: 'Poolside', name: 'Laguna S 2.1 (free)', slug: 'poolside/laguna-s-2.1:free', tags: ['Free'] },
+  { brand: 'Poolside', name: 'Laguna XS 2.1 (free)', slug: 'poolside/laguna-xs-2.1:free', tags: ['Free'] },
 ];
+
+let liveFreeOpenRouterModelsCache: string[] = VERIFIED_FREE_MODELS_POOL.map((m) => m.slug);
 let isFetchingLiveModels = false;
 let lastFetchTime = 0;
 
@@ -257,19 +277,37 @@ export async function syncLiveOpenRouterModels(): Promise<string[]> {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.data)) {
-        const liveSlugs = data.data.map((m: any) => m.id).filter(Boolean);
+        const liveSlugs = data.data
+          .map((m: any) => m.id)
+          .filter(
+            (id: any) =>
+              typeof id === 'string' &&
+              !id.startsWith('thinkingmachines/') &&
+              !id.includes('moderation') &&
+              !id.includes('embed')
+          );
         const freeSlugs = data.data
           .filter((m: any) => {
+            if (
+              typeof m.id !== 'string' ||
+              m.id.startsWith('thinkingmachines/') ||
+              m.id.includes('moderation') ||
+              m.id.includes('embed')
+            ) {
+              return false;
+            }
             const isZeroCost =
               (m.pricing?.prompt === '0' || m.pricing?.prompt === 0) &&
               (m.pricing?.completion === '0' || m.pricing?.completion === 0);
-            const hasFreeSuffix = typeof m.id === 'string' && m.id.endsWith(':free');
+            const hasFreeSuffix = m.id.endsWith(':free');
             return isZeroCost || hasFreeSuffix || m.id === 'openrouter/free';
           })
           .map((m: any) => m.id);
 
         if (freeSlugs.length > 0) {
-          liveFreeOpenRouterModelsCache = Array.from(new Set([...freeSlugs, 'openrouter/free']));
+          liveFreeOpenRouterModelsCache = Array.from(
+            new Set([...freeSlugs, ...VERIFIED_FREE_MODELS_POOL.map((m) => m.slug)])
+          );
         }
 
         if (liveSlugs.length > 0) {
@@ -369,9 +407,14 @@ export function resolveOpenRouterModel(modelInput: string): string {
   const creator = detectCreator(input);
   const lower = input.toLowerCase().replace(/[^a-z0-9.:]+/g, '-');
 
-  // Direct high-accuracy resolution for special creators
+  // Direct high-accuracy resolution for special creators and free models
   if (lower.includes('free-auto-router') || lower.includes('openrouter-free') || input === 'openrouter/free') {
     return 'openrouter/free';
+  }
+
+  if (creator === 'poolside' || lower.includes('laguna')) {
+    if (lower.includes('xs')) return lower.includes('free') ? 'poolside/laguna-xs-2.1:free' : 'poolside/laguna-xs-2.1';
+    return lower.includes('free') ? 'poolside/laguna-s-2.1:free' : 'poolside/laguna-s-2.1';
   }
 
   if (creator === 'nvidia') {
@@ -410,6 +453,25 @@ export function resolveOpenRouterModel(modelInput: string): string {
     if (lower.includes('72b')) return lower.includes('free') ? 'qwen/qwen-2.5-72b-instruct:free' : 'qwen/qwen-2.5-72b-instruct';
   }
 
+  if (creator === 'mistralai') {
+    if (lower.includes('7b')) return lower.includes('free') ? 'mistralai/mistral-7b-instruct:free' : 'mistralai/mistral-7b-instruct';
+    if (lower.includes('small')) return lower.includes('free') ? 'mistralai/mistral-small-24b-instruct-2501:free' : 'mistralai/mistral-small-24b-instruct-2501';
+    if (lower.includes('nemo')) return lower.includes('free') ? 'mistralai/mistral-nemo:free' : 'mistralai/mistral-nemo';
+  }
+
+  if (creator === 'google') {
+    if (lower.includes('gemini-2.0-flash-exp') || (lower.includes('flash-exp') && lower.includes('free'))) return 'google/gemini-2.0-flash-exp:free';
+    if (lower.includes('gemma-2-9b') || (lower.includes('gemma') && lower.includes('free'))) return 'google/gemma-2-9b-it:free';
+  }
+
+  if (creator === 'microsoft') {
+    if (lower.includes('phi-3-mini') || (lower.includes('phi-3') && lower.includes('free'))) return 'microsoft/phi-3-mini-128k-instruct:free';
+  }
+
+  if (creator === 'cognitivecomputations') {
+    if (lower.includes('dolphin')) return 'cognitivecomputations/dolphin3.0-r1-mistral-24b:free';
+  }
+
   // Direct high-accuracy resolution for Anthropic Claude series
   if (creator === 'anthropic') {
     if (lower.includes('fable')) return lower.includes('batch') ? 'anthropic/claude-fable-5:batch' : 'anthropic/claude-fable-5';
@@ -446,12 +508,18 @@ export function resolveOpenRouterModel(modelInput: string): string {
   // If raw input has Brand: Model format and no recognized major creator, construct a clean brand/model slug
   if (!creator && input.includes(':')) {
     const parts = input.split(':');
-    const b = parts[0].trim().toLowerCase().replace(/[^a-z0-9.]+/g, '-');
-    let m = parts.slice(1).join('-').trim().toLowerCase().replace(/[^a-z0-9.]+/g, '-');
-    if (input.toLowerCase().includes('free') && !m.endsWith(':free') && !m.endsWith('-free')) {
-      m = `${m.replace(/-free$/, '')}:free`;
+    const b = parts[0].trim().toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '');
+    let rawM = parts.slice(1).join(' ').trim();
+    const wantsFreeInPart = rawM.toLowerCase().includes('free');
+    let cleanM = rawM
+      .replace(/\((free|preview|batch|fast)\)/gi, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9.]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (wantsFreeInPart && !cleanM.endsWith(':free')) {
+      cleanM = `${cleanM}:free`;
     }
-    return `${b}/${m}`;
+    return `${b}/${cleanM}`;
   }
 
   // Filter pool of candidate models

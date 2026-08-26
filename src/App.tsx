@@ -17,6 +17,7 @@ import { getStoredRuns, saveRunUniversal, subscribeUniversalLeaderboard } from '
 import { generateBenchmarkTurnHybrid } from './utils/hybridTurnGenerator';
 import { computeVerificationClient } from './utils/verification';
 import { getActiveCatalogModels } from './utils/modelCatalog';
+import { VERIFIED_FREE_MODELS_POOL } from './utils/openRouterResolver';
 import { BENCHMARK_PROBLEMS } from './data/benchmarkProblems';
 import { Navbar } from './components/Navbar';
 import { ArenaHeader } from './components/ArenaHeader';
@@ -283,48 +284,39 @@ export default function App() {
 
   // Randomize Free Matchup & Question (Picks 2 random distinct 100% free models + random benchmark question)
   const handleRandomizeFreeMatchupAndProblem = useCallback(() => {
-    const catalog = getActiveCatalogModels();
-    const freeModels = catalog.filter(
-      (m) =>
-        m.isFree ||
-        m.tags.includes('Free') ||
-        m.name.toLowerCase().includes('(free)') ||
-        m.rawName.toLowerCase().includes('(free)') ||
-        m.modelCode.includes(':free') ||
-        m.modelCode === 'openrouter/free'
-    );
-    const candidatePool = freeModels.length > 0 ? freeModels : catalog;
+    // Primary guaranteed pool of verified free models
+    const pool = VERIFIED_FREE_MODELS_POOL;
 
-    const idxA = Math.floor(Math.random() * candidatePool.length);
-    let idxB = Math.floor(Math.random() * candidatePool.length);
-    if (candidatePool.length > 1 && idxB === idxA) {
-      idxB = (idxA + 1 + Math.floor(Math.random() * (candidatePool.length - 1))) % candidatePool.length;
+    const idxA = Math.floor(Math.random() * pool.length);
+    let idxB = Math.floor(Math.random() * pool.length);
+    if (pool.length > 1 && idxB === idxA) {
+      idxB = (idxA + 1 + Math.floor(Math.random() * (pool.length - 1))) % pool.length;
     }
 
-    const modelA = candidatePool[idxA];
-    const modelB = candidatePool[idxB];
+    const modelA = pool[idxA];
+    const modelB = pool[idxB];
 
     const randomProblem =
       allProblems[Math.floor(Math.random() * allProblems.length)] || allProblems[0];
 
     const newAgentA: AgentConfig = {
       ...agentA,
-      model: modelA.modelCode || modelA.id,
-      provider: modelA.provider,
+      model: modelA.slug,
+      provider: 'openrouter',
       brand: modelA.brand,
       isManualExternal: false,
-      customBrand: modelA.provider === 'custom' ? modelA.brand : undefined,
-      customModel: modelA.provider === 'custom' ? modelA.name : undefined,
+      customBrand: undefined,
+      customModel: undefined,
     };
 
     const newAgentB: AgentConfig = {
       ...agentB,
-      model: modelB.modelCode || modelB.id,
-      provider: modelB.provider,
+      model: modelB.slug,
+      provider: 'openrouter',
       brand: modelB.brand,
       isManualExternal: false,
-      customBrand: modelB.provider === 'custom' ? modelB.brand : undefined,
-      customModel: modelB.provider === 'custom' ? modelB.name : undefined,
+      customBrand: undefined,
+      customModel: undefined,
     };
 
     setAgentA(newAgentA);
