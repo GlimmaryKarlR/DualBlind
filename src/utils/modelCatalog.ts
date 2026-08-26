@@ -600,7 +600,11 @@ function parseModelEntry(raw: string, index: number): CatalogModel {
     .replace(/^-+|-+$/g, '');
 
   let modelCode = resolveOpenRouterModel(raw);
-  if (provider === 'google') {
+  let effectiveProvider = provider;
+
+  if (isFree) {
+    effectiveProvider = 'openrouter';
+  } else if (provider === 'google') {
     const lower = raw.toLowerCase();
     if (lower.includes('pro')) modelCode = 'gemini-3.1-pro-preview';
     else if (lower.includes('3.7')) modelCode = 'gemini-3.7-flash';
@@ -615,7 +619,7 @@ function parseModelEntry(raw: string, index: number): CatalogModel {
     brand,
     name,
     modelCode: modelCode || idSlug,
-    provider,
+    provider: effectiveProvider,
     isExternal: false,
     inputPricePerMillion: inPrice,
     outputPricePerMillion: outPrice,

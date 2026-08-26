@@ -126,6 +126,12 @@ export function detectBrandFromSlug(slug: string, rawName?: string): { brand: st
   } else if (prefix === 'liquid' || slug.includes('lfm')) {
     brand = 'LiquidAI';
     provider = 'openrouter';
+  } else if (prefix === 'poolside' || slug.includes('laguna')) {
+    brand = 'Poolside';
+    provider = 'openrouter';
+  } else if (prefix === 'cognitivecomputations' || slug.includes('dolphin')) {
+    brand = 'CognitiveComputations';
+    provider = 'openrouter';
   } else if (prefix === 'arcee-ai') {
     brand = 'Arcee AI';
     provider = 'openrouter';
@@ -185,7 +191,7 @@ export function transformOpenRouterToCatalogModel(model: OpenRouterScrapedModel)
     brand,
     name: model.name || cleanName,
     modelCode: model.id,
-    provider,
+    provider: isFree ? 'openrouter' : provider,
     isExternal: false,
     inputPricePerMillion: inputPricePerMillion > 0 ? inputPricePerMillion : isFree ? 0 : 0.5,
     outputPricePerMillion: outputPricePerMillion > 0 ? outputPricePerMillion : isFree ? 0 : 1.5,
