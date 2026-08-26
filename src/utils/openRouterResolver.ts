@@ -87,52 +87,72 @@ const CURATED_OPENROUTER_MODELS: Record<string, string[]> = {
     'nvidia/nemotron-3-ultra',
     'nvidia/nemotron-3.5-lightning:free',
     'nvidia/nemotron-3.5-lightning',
+    'nvidia/llama-3.1-nemotron-70b-instruct:free',
+    'nvidia/llama-3.1-nemotron-70b-instruct',
   ],
   deepseek: [
     'deepseek/deepseek-r1:free',
     'deepseek/deepseek-r1',
     'deepseek/deepseek-chat:free',
     'deepseek/deepseek-chat',
+    'deepseek/deepseek-r1-distill-llama-70b:free',
+    'deepseek/deepseek-r1-distill-qwen-32b:free',
     'deepseek/deepseek-coder',
   ],
   'meta-llama': [
+    'meta-llama/llama-3.3-70b-instruct:free',
     'meta-llama/llama-3.3-70b-instruct',
     'meta-llama/llama-3.1-405b-instruct',
+    'meta-llama/llama-3.1-70b-instruct:free',
     'meta-llama/llama-3.1-70b-instruct',
+    'meta-llama/llama-3.1-8b-instruct:free',
     'meta-llama/llama-3.1-8b-instruct',
+    'meta-llama/llama-3.2-3b-instruct:free',
     'meta-llama/llama-3.2-3b-instruct',
+    'meta-llama/llama-3.2-1b-instruct:free',
     'meta-llama/llama-3.2-1b-instruct',
   ],
   qwen: [
+    'qwen/qwen-2.5-72b-instruct:free',
     'qwen/qwen-2.5-72b-instruct',
+    'qwen/qwen-2.5-coder-32b-instruct:free',
     'qwen/qwen-2.5-coder-32b-instruct',
     'qwen/qwen-2.5-32b-instruct',
+    'qwen/qwen-2.5-7b-instruct:free',
     'qwen/qwen-2.5-7b-instruct',
+    'qwen/qwq-32b:free',
     'qwen/qwq-32b',
   ],
   mistralai: [
     'mistralai/mistral-large-2411',
+    'mistralai/mistral-small-24b-instruct-2501:free',
     'mistralai/mistral-small-24b-instruct-2501',
+    'mistralai/mistral-7b-instruct:free',
     'mistralai/codestral-2501',
     'mistralai/ministral-8b',
+    'mistralai/mistral-nemo:free',
     'mistralai/mistral-nemo',
   ],
   google: [
+    'google/gemini-2.0-flash-exp:free',
     'google/gemini-2.0-flash-001',
     'google/gemini-pro-1.5',
     'google/gemini-flash-1.5',
     'google/gemma-2-27b-it',
+    'google/gemma-2-9b-it:free',
     'google/gemma-2-9b-it',
-  ],
-  amazon: [
-    'amazon/nova-pro-v1',
-    'amazon/nova-lite-v1',
-    'amazon/nova-micro-v1',
+    'google/learnlm-1.5-pro-experimental:free',
   ],
   microsoft: [
     'microsoft/phi-4',
     'microsoft/phi-3.5-mini-128k-instruct',
+    'microsoft/phi-3-mini-128k-instruct:free',
+    'microsoft/phi-3-medium-128k-instruct:free',
     'microsoft/wizardlm-2-8x22b',
+  ],
+  cognitivecomputations: [
+    'cognitivecomputations/dolphin3.0-r1-mistral-24b:free',
+    'cognitivecomputations/dolphin3.0-mistral-24b:free',
   ],
   cohere: [
     'cohere/command-r-plus-08-2024',
@@ -288,9 +308,14 @@ export function resolveOpenRouterModel(modelInput: string): string {
   const input = (modelInput || '').trim();
   if (!input) return 'google/gemini-2.0-flash-001';
 
-  // 1. If it's already an exact match in our active pool
+  // 1. If it's already an exact match in our active pool or already formatted as a standard creator/model slug
   if (liveOpenRouterModelsCache.includes(input)) {
     return input;
+  }
+
+  // If input already has format 'creator/model-slug' or 'creator/model-slug:free'
+  if (/^[a-z0-9_.-]+\/[a-z0-9_.:-]+$/i.test(input)) {
+    return input.toLowerCase();
   }
 
   // 2. Identify the creator/provider
