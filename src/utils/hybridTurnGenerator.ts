@@ -24,14 +24,15 @@ export async function generateBenchmarkTurnHybrid(options: {
 
   const provider = (agent.provider || 'google').toLowerCase();
   
-  // Check for direct provider key, universal OpenRouter key, custom endpoint, or Google key
+  // Check for direct provider key, universal OpenRouter/OrcaRouter key, custom endpoint, or Google key
   const hasDirectKey = hasConfiguredKeyForProvider(provider, apiKeys);
   const hasOpenRouterKey = Boolean(apiKeys.openrouter && apiKeys.openrouter.trim().length > 0);
+  const hasOrcaRouterKey = Boolean(apiKeys.orcarouter && apiKeys.orcarouter.trim().length > 0);
   const hasCustomKey = Boolean(apiKeys.customEndpoint?.baseUrl && apiKeys.customEndpoint?.apiKey);
   const hasGoogleKey = Boolean(apiKeys.google && apiKeys.google.trim().length > 0);
 
-  // OpenRouter acts as a universal hub for all models
-  const hasUsableKey = hasDirectKey || hasOpenRouterKey || hasCustomKey || hasGoogleKey;
+  // Universal routing hubs for multi-model benchmark compute
+  const hasUsableKey = hasDirectKey || hasOpenRouterKey || hasOrcaRouterKey || hasCustomKey || hasGoogleKey;
 
   const clientOptions = {
     ...options,

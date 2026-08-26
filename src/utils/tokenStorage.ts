@@ -29,6 +29,18 @@ export const PROVIDER_METAS: ProviderMeta[] = [
     recommendedModels: ['meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-r1', 'qwen/qwen-2.5-72b-instruct'],
   },
   {
+    id: 'orcarouter',
+    name: 'OrcaRouter (AI Router & Ensemble Hub)',
+    brandName: 'OrcaRouter',
+    category: 'universal',
+    tokenLabel: 'OrcaRouter API Key',
+    placeholder: 'sk-orca-...',
+    portalUrl: 'https://orcarouter.com/keys',
+    portalName: 'OrcaRouter Console',
+    helpText: 'Next-generation AI routing gateway featuring automatic fallback, low-latency ensemble switching, and cost optimization.',
+    recommendedModels: ['orcarouter/auto-balanced', 'orcarouter/high-reasoning', 'orcarouter/deepseek-r1'],
+  },
+  {
     id: 'google',
     name: 'Google Gemini API',
     brandName: 'Google AI',
@@ -210,6 +222,7 @@ export function hasConfiguredKeyForProvider(
   if (p === 'microsoft') return Boolean(keys.microsoft && keys.microsoft.trim().length > 0);
   if (p === 'amazon') return Boolean(keys.amazon && keys.amazon.trim().length > 0);
   if (p === 'openrouter') return Boolean(keys.openrouter && keys.openrouter.trim().length > 0);
+  if (p === 'orcarouter') return Boolean(keys.orcarouter && keys.orcarouter.trim().length > 0);
   if (p === 'custom') return Boolean(keys.customEndpoint?.apiKey && keys.customEndpoint.apiKey.trim().length > 0);
   return false;
 }
@@ -232,6 +245,7 @@ export function getKeyForProvider(
   if (p === 'microsoft') return keys.microsoft;
   if (p === 'amazon') return keys.amazon;
   if (p === 'openrouter') return keys.openrouter;
+  if (p === 'orcarouter') return keys.orcarouter;
   if (p === 'custom') return keys.customEndpoint?.apiKey;
   return undefined;
 }
@@ -259,6 +273,7 @@ export function countConfiguredKeys(keys: ProviderApiKeys): number {
   if (keys.microsoft?.trim()) count++;
   if (keys.amazon?.trim()) count++;
   if (keys.openrouter?.trim()) count++;
+  if (keys.orcarouter?.trim()) count++;
   if (keys.customEndpoint?.apiKey?.trim()) count++;
   return count;
 }

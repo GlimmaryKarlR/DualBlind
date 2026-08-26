@@ -76,6 +76,7 @@ export interface AgentConfig {
     | 'amazon'
     | 'cohere'
     | 'openrouter'
+    | 'orcarouter'
     | 'custom';
   isManualExternal?: boolean;
   customBrand?: string;
@@ -179,6 +180,8 @@ export interface ProviderApiKeys {
   microsoft?: string; // Azure / GitHub Models
   amazon?: string; // AWS Bedrock
   openrouter?: string; // OpenRouter universal key
+  orcarouter?: string; // OrcaRouter universal AI routing key
+  orcarouterEndpoint?: string; // Optional custom OrcaRouter gateway URL
   customEndpoint?: {
     baseUrl: string;
     apiKey: string;

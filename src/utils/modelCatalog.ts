@@ -20,6 +20,7 @@ export interface CatalogModel {
     | 'amazon'
     | 'cohere'
     | 'openrouter'
+    | 'orcarouter'
     | 'custom';
   isExternal: boolean;
   inputPricePerMillion: number;
@@ -336,6 +337,16 @@ const RAW_MODELS: string[] = [
   'OpenAI: o4 Mini High',
   'OpenAI: o4 Mini High (batch)',
   'OpenRouter: Fusion',
+  'OrcaRouter: Auto Balanced (Universal Router)',
+  'OrcaRouter: High Reasoning (R1 & o3 Ensembles)',
+  'OrcaRouter: Fast Coding & SWE Specialist',
+  'OrcaRouter: Lowest Cost Dynamic Fallback',
+  'OrcaRouter: Claude Sonnet 3.7 Router',
+  'OrcaRouter: DeepSeek R1 MoE (671B)',
+  'OrcaRouter: GPT-4o Omni Router',
+  'OrcaRouter: Llama 3.3 70B Turbo',
+  'OrcaRouter: Qwen 2.5 Coder 32B',
+  'OrcaRouter: Kimi K2.5 Long-Context',
   'Ox Alpha',
   'Pareto Code Router',
   'Perceptron: Perceptron Mk1',
@@ -497,6 +508,9 @@ function extractBrandAndName(raw: string): { brand: string; name: string } {
   if (trimmed.toLowerCase().startsWith('wizardlm')) {
     return { brand: 'Microsoft', name: trimmed };
   }
+  if (trimmed.toLowerCase().startsWith('orcarouter') || trimmed.toLowerCase().startsWith('orca router')) {
+    return { brand: 'OrcaRouter', name: trimmed.replace(/^OrcaRouter:?\s*/i, '') };
+  }
   if (trimmed.toLowerCase().startsWith('remm') || trimmed.toLowerCase().startsWith('mythomax')) {
     return { brand: 'Open Community', name: trimmed };
   }
@@ -512,6 +526,7 @@ function extractBrandAndName(raw: string): { brand: string; name: string } {
 function resolveProvider(brand: string, modelName: string): CatalogModel['provider'] {
   const b = brand.toLowerCase();
   const m = modelName.toLowerCase();
+  if (b.includes('orcarouter') || b.includes('orca router') || m.includes('orcarouter')) return 'orcarouter';
   if (b.includes('google')) return 'google';
   if (b.includes('anthropic') || m.includes('claude')) return 'anthropic';
   if (b.includes('openai') || m.includes('gpt') || m.includes('o1') || m.includes('o3') || m.includes('o4')) return 'openai';
@@ -605,6 +620,8 @@ export const BRAND_COLORS: Record<string, string> = {
   Google: 'indigo',
   OpenAI: 'emerald',
   Anthropic: 'amber',
+  OrcaRouter: 'cyan',
+  OpenRouter: 'purple',
   Qwen: 'purple',
   'Moonshot AI': 'pink',
   DeepSeek: 'sky',
@@ -670,6 +687,8 @@ export function getBrandGroups(models: CatalogModel[] = getActiveCatalogModels()
     'Google',
     'OpenAI',
     'Anthropic',
+    'OrcaRouter',
+    'OpenRouter',
     'DeepSeek',
     'Qwen',
     'xAI',
