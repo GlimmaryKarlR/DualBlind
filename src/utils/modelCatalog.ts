@@ -740,22 +740,63 @@ export function getBrandGroups(models: CatalogModel[] = getActiveCatalogModels()
   }));
 }
 
-export function findCatalogModel(modelQuery: string): CatalogModel | undefined {
+export function findCatalogModel(modelQuery: string, preferredBrand?: string): CatalogModel | undefined {
   if (!modelQuery) return undefined;
   const q = modelQuery.trim().toLowerCase();
   const activePool = getActiveCatalogModels();
   
-  // Exact ID or modelCode match
-  const byId = activePool.find(
-    (m) => m.id === q || m.modelCode === q || m.rawName.toLowerCase() === q
+  // 1. Exact ID or rawName match
+  const exactId = activePool.find(
+    (m) => m.id === q || m.rawName.toLowerCase() === q
   );
-  if (byId) return byId;
+  if (exactId) return exactId;
 
-  // Fuzzy substring match
-  return activePool.find(
-    (m) =>
-      m.name.toLowerCase().includes(q) ||
-      m.rawName.toLowerCase().includes(q) ||
-      q.includes(m.id)
-  );
+  // 2. If preferredBrand is provided, look for exact match within that brand first
+  if (preferredBrand) {
+    const bLower = preferredBrand.toLowerCase();
+    const brandMatch = activePool.find(
+      (m) =>
+        m.brand.toLowerCase() === bLower &&
+        (m.id === q || m.name.toLowerCase() === q || m.modelCode.toLowerCase() === q || m.rawName.toLowerCase() === q)
+    );
+    if (brandMatch) return brandMatch;
+  }
+
+  // 3. Exact modelCode match with matching brand
+  if (preferredBrand) {
+    const bLower = preferredBrand.toLowerCase();
+    const exactModelCodeAndBrand = activePool.find(
+      (m) => m.modelCode.toLowerCase() === q && m.brand.toLowerCase() === bLower
+    );
+    if (exactModelCodeAndBrand) return exactModelCodeAndBrand;
+  }
+
+  // 4. Exact modelCode match
+  const exactModelCode = activePool.find((m) => m.modelCode.toLowerCase() === q);
+  if (exactModelCode) return exactModelCode;
+
+  // 5. Exact model name match
+  const exactName = activePool.find((m) => m.name.toLowerCase() === q);
+  if (exactName) return exactName;
+
+  // 6. Safe fuzzy substring match (only for query strings longer than 3 chars)
+  if (q.length >= 4) {
+    if (preferredBrand) {
+      const bLower = preferredBrand.toLowerCase();
+      const brandFuzzy = activePool.find(
+        (m) =>
+          m.brand.toLowerCase() === bLower &&
+          (m.name.toLowerCase().includes(q) || m.rawName.toLowerCase().includes(q))
+      );
+      if (brandFuzzy) return brandFuzzy;
+    }
+
+    return activePool.find(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.rawName.toLowerCase().includes(q)
+    );
+  }
+
+  return undefined;
 }

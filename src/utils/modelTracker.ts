@@ -480,7 +480,9 @@ export function parseModelBrandInfo(
   let outputPrice = 0.60;
 
   // 1. Check full 400+ model catalog
-  const catalogMatch = findCatalogModel(model) || (actualModelUsed ? findCatalogModel(actualModelUsed) : undefined);
+  const catalogMatch =
+    findCatalogModel(model, customBrand) ||
+    (actualModelUsed ? findCatalogModel(actualModelUsed, customBrand) : undefined);
   const matchedPreset = MODEL_PRESETS.find(
     (p) => p.modelCode.toLowerCase() === model || p.id.toLowerCase() === model || model.includes(p.id)
   );

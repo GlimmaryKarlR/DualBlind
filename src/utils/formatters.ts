@@ -325,7 +325,7 @@ export function getAgentMakeAndModel(agent?: Partial<AgentConfig>): AgentMakeMod
   }
 
   // 3. Lookup in catalog
-  const catalog = findCatalogModel(agent.model || embeddedContent || '');
+  const catalog = findCatalogModel(agent.model || embeddedContent || '', agent.brand);
   let make = agent.brand || catalog?.brand || '';
   let modelName = catalog?.name || '';
 
