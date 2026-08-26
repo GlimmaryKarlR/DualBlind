@@ -297,6 +297,13 @@ function detectCreator(raw: string): string | null {
   if (lower.includes('sao10k')) return 'sao10k';
   if (lower.includes('writer') || lower.includes('palmyra')) return 'writer';
   if (lower.includes('bytedance') || lower.includes('seed')) return 'bytedance';
+  if (lower.includes('dots') || lower.includes('dots studio')) return 'dots-studio';
+  if (lower.includes('aion') || lower.includes('aionlabs')) return 'aionlabs';
+  if (lower.includes('allenai') || lower.includes('olmo')) return 'allenai';
+  if (lower.includes('poolside') || lower.includes('laguna')) return 'poolside';
+  if (lower.includes('morph')) return 'morph';
+  if (lower.includes('relace')) return 'relace';
+  if (lower.includes('cognitivecomputations') || lower.includes('dolphin')) return 'cognitivecomputations';
   return null;
 }
 
@@ -355,12 +362,25 @@ export function resolveOpenRouterModel(modelInput: string): string {
 
   const inputTokens = tokenize(input);
 
+  // If raw input has Brand: Model format and no recognized major creator, construct a clean brand/model slug
+  if (!creator && input.includes(':')) {
+    const parts = input.split(':');
+    const b = parts[0].trim().toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+    let m = parts.slice(1).join('-').trim().toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+    if (input.toLowerCase().includes('free') && !m.endsWith(':free') && !m.endsWith('-free')) {
+      m = `${m.replace(/-free$/, '')}:free`;
+    }
+    return `${b}/${m}`;
+  }
+
   // Filter pool of candidate models
-  let candidates = liveOpenRouterModelsCache;
+  let candidates: string[] = [];
   if (creator) {
-    const creatorCandidates = candidates.filter((slug) => slug.startsWith(`${creator}/`));
+    const creatorCandidates = liveOpenRouterModelsCache.filter((slug) => slug.startsWith(`${creator}/`));
     if (creatorCandidates.length > 0) {
       candidates = creatorCandidates;
+    } else if (CURATED_OPENROUTER_MODELS[creator]) {
+      candidates = CURATED_OPENROUTER_MODELS[creator];
     }
   }
 
@@ -409,13 +429,19 @@ export function resolveOpenRouterModel(modelInput: string): string {
 
   // 4. Default flagship fallbacks for the detected creator
   if (creator && CURATED_OPENROUTER_MODELS[creator]) {
-    return CURATED_OPENROUTER_MODELS[creator][0];
+    const defaultModel = CURATED_OPENROUTER_MODELS[creator][0];
+    if (wantsFree) {
+      const freeCandidate = CURATED_OPENROUTER_MODELS[creator].find((s) => s.includes(':free'));
+      if (freeCandidate) return freeCandidate;
+    }
+    return defaultModel;
   }
 
   // 5. If creator is known but no curated models list, form a clean slug
   if (creator) {
     const modelPart = inputTokens.filter((t) => t !== creator).join('-');
-    return `${creator}/${modelPart || 'model'}`;
+    const suffix = wantsFree ? ':free' : '';
+    return `${creator}/${modelPart || 'model'}${suffix}`;
   }
 
   // 6. If raw input has Brand: Model format, construct a clean brand/model slug

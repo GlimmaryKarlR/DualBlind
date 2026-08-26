@@ -122,7 +122,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
 
   // Find currently active catalog model or create fallback
   const currentModelInfo = useMemo(() => {
-    const found = findCatalogModel(selectedModel);
+    const found = findCatalogModel(selectedModel, selectedBrand);
     if (found) return found;
     return {
       id: selectedModel || 'gemini-3.7-flash',
@@ -504,7 +504,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                     {isExpanded && (
                       <div className="divide-y divide-slate-100 border-t border-slate-100 bg-white dark:divide-slate-800/60 dark:border-slate-800 dark:bg-slate-900">
                         {group.models.map((model) => {
-                          const selectedCatalogModel = findCatalogModel(selectedModel);
+                          const selectedCatalogModel = findCatalogModel(selectedModel, selectedBrand);
                           const isSelected =
                             (selectedCatalogModel && selectedCatalogModel.id === model.id) ||
                             selectedModel === model.id ||
