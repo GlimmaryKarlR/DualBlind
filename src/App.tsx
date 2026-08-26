@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AlertCircle, RefreshCw, X } from 'lucide-react';
+import { AlertCircle, RefreshCw, X, Shuffle, Sparkles } from 'lucide-react';
 import {
   BenchmarkProblem,
   TopicCategory,
@@ -16,6 +16,7 @@ import { getStoredApiKeys, countConfiguredKeys } from './utils/tokenStorage';
 import { getStoredRuns, saveRunUniversal, subscribeUniversalLeaderboard } from './utils/runStorage';
 import { generateBenchmarkTurnHybrid } from './utils/hybridTurnGenerator';
 import { computeVerificationClient } from './utils/verification';
+import { getActiveCatalogModels } from './utils/modelCatalog';
 import { BENCHMARK_PROBLEMS } from './data/benchmarkProblems';
 import { Navbar } from './components/Navbar';
 import { ArenaHeader } from './components/ArenaHeader';
@@ -214,6 +215,71 @@ export default function App() {
       isUncapped,
     });
   }, [isUncapped]);
+
+  // State for brief visual confirmation when randomized
+  const [randomizeNotice, setRandomizeNotice] = useState<{
+    agentAName: string;
+    agentBName: string;
+    problemTitle: string;
+    suiteName: string;
+  } | null>(null);
+
+  // Randomize Matchup & Question (Picks 2 random distinct models + random benchmark question)
+  const handleRandomizeMatchupAndProblem = useCallback(() => {
+    const catalog = getActiveCatalogModels();
+    if (catalog.length === 0) return;
+
+    // Pick 2 random distinct models from active catalog
+    const idxA = Math.floor(Math.random() * catalog.length);
+    let idxB = Math.floor(Math.random() * catalog.length);
+    if (catalog.length > 1 && idxB === idxA) {
+      idxB = (idxA + 1 + Math.floor(Math.random() * (catalog.length - 1))) % catalog.length;
+    }
+
+    const modelA = catalog[idxA];
+    const modelB = catalog[idxB];
+
+    // Pick random problem from all benchmark problems
+    const randomProblem =
+      allProblems[Math.floor(Math.random() * allProblems.length)] || allProblems[0];
+
+    const newAgentA: AgentConfig = {
+      ...agentA,
+      model: modelA.modelCode || modelA.id,
+      provider: modelA.provider,
+      brand: modelA.brand,
+      isManualExternal: false,
+      customBrand: modelA.provider === 'custom' ? modelA.brand : undefined,
+      customModel: modelA.provider === 'custom' ? modelA.name : undefined,
+    };
+
+    const newAgentB: AgentConfig = {
+      ...agentB,
+      model: modelB.modelCode || modelB.id,
+      provider: modelB.provider,
+      brand: modelB.brand,
+      isManualExternal: false,
+      customBrand: modelB.provider === 'custom' ? modelB.brand : undefined,
+      customModel: modelB.provider === 'custom' ? modelB.name : undefined,
+    };
+
+    setAgentA(newAgentA);
+    setAgentB(newAgentB);
+    setCurrentProblem(randomProblem);
+    setSelectedTopicFilter('all');
+    handleReset();
+
+    setRandomizeNotice({
+      agentAName: `${modelA.brand}: ${modelA.name}`,
+      agentBName: `${modelB.brand}: ${modelB.name}`,
+      problemTitle: randomProblem.title,
+      suiteName: randomProblem.suite || randomProblem.topic.toUpperCase(),
+    });
+
+    setTimeout(() => {
+      setRandomizeNotice(null);
+    }, 4500);
+  }, [agentA, agentB, allProblems, handleReset]);
 
   // Topic Roulette / Random Challenge Launcher
   const handleRandomChallenge = useCallback(
@@ -993,6 +1059,7 @@ export default function App() {
               agentA={agentA}
               agentB={agentB}
               onOpenConfig={() => setIsConfigModalOpen(true)}
+              onRandomize={handleRandomizeMatchupAndProblem}
               isRunning={isRunning}
               isPaused={isPaused}
               isUncapped={isUncapped}
@@ -1008,6 +1075,39 @@ export default function App() {
               turnCount={turns.length}
               maxTurns={maxTurns}
             />
+
+            {/* Randomization Alert / Toast Banner */}
+            {randomizeNotice && (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-purple-200 bg-purple-50/90 px-4 py-3 text-xs text-purple-900 shadow-sm dark:border-purple-800/80 dark:bg-purple-950/50 dark:text-purple-100 animate-fade-in">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white shadow-2xs">
+                    <Shuffle className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0 truncate">
+                    <span className="font-bold text-purple-950 dark:text-white mr-1.5">
+                      Randomized Matchup:
+                    </span>
+                    <span className="font-semibold text-purple-800 dark:text-purple-300">
+                      {randomizeNotice.agentAName}
+                    </span>
+                    <span className="text-purple-500 dark:text-purple-400 mx-1.5 font-bold">vs</span>
+                    <span className="font-semibold text-purple-800 dark:text-purple-300">
+                      {randomizeNotice.agentBName}
+                    </span>
+                    <span className="text-slate-400 dark:text-slate-500 mx-2">•</span>
+                    <span className="text-slate-600 dark:text-slate-300 truncate">
+                      [{randomizeNotice.suiteName}] {randomizeNotice.problemTitle}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRandomizeNotice(null)}
+                  className="rounded-lg p-1 text-purple-400 hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/60 dark:hover:text-purple-200 cursor-pointer shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
 
             {/* Problem Statement & Consensus Protocol (Grouped with Question Selector) */}
             <ProblemCard problem={currentProblem} />
