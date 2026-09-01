@@ -57,20 +57,50 @@ function getGenAI(): GoogleGenAI {
   });
 }
 
-// Regex to extract FINAL ANSWER: [xxx]
+// Regex to extract FINAL ANSWER: [xxx], **Final Answer:** xxx, or unbracketed sentence claims
 function extractFinalAnswer(text: string): string | null {
   if (!text) return null;
-  // Match FINAL ANSWER:\s*\[(.*?)\] (case-insensitive)
-  const bracketMatch = text.match(/FINAL\s+ANSWER\s*:\s*\[(.*?)\]/i);
+
+  // 1. Match bracketed answers: FINAL ANSWER: [x], **FINAL ANSWER:** [x], etc.
+  const bracketMatch = text.match(/(?:\*{0,3}|#{1,6}\s*)(?:FINAL\s+ANSWER|CONSENSUS\s+ANSWER|FINAL\s+CONSENSUS|ANSWER)(?:\*{0,3})[\s:]*(?:\*{0,3})\s*\[([\s\S]*?)\]/i);
   if (bracketMatch && bracketMatch[1]) {
-    return bracketMatch[1].trim();
+    const cleaned = bracketMatch[1].replace(/^[\[\("']+|[\]\)"']+$/g, '').trim();
+    if (cleaned.length > 0) return cleaned;
   }
 
-  // Match FINAL ANSWER:\s*(.*?)($|\n)
-  const lineMatch = text.match(/FINAL\s+ANSWER\s*:\s*([^\n\r.]+)/i);
+  // 2. Match LaTeX boxed: \boxed{x}
+  const boxedMatch = text.match(/(?:\*{0,3}|#{1,6}\s*)(?:FINAL\s+ANSWER|CONSENSUS\s+ANSWER|FINAL\s+CONSENSUS|ANSWER)(?:\*{0,3})[\s:]*(?:\*{0,3})\s*\\boxed\{([\s\S]*?)\}/i);
+  if (boxedMatch && boxedMatch[1]) {
+    const cleaned = boxedMatch[1].trim();
+    if (cleaned.length > 0) return cleaned;
+  }
+
+  // 3. Match bold header syntax: **FINAL ANSWER:** <text> or **FINAL ANSWER**: <text> or **Final Answer** <text>
+  const boldHeaderMatch = text.match(/\*\*(?:FINAL\s+ANSWER|CONSENSUS\s+ANSWER|FINAL\s+CONSENSUS|ANSWER)(?::\*\*|\*\*[:\s]*)\s*([^\n\r]+)/i);
+  if (boldHeaderMatch && boldHeaderMatch[1]) {
+    let cleaned = boldHeaderMatch[1].replace(/^[\[\("'\*]+|[\]\)"'\*]+$/g, '').trim();
+    cleaned = cleaned.replace(/^\*\*|\*\*$/g, '').trim();
+    if (cleaned.length > 0 && cleaned.length < 3000) {
+      return cleaned;
+    }
+  }
+
+  // 4. Match general line-based: FINAL ANSWER: <text> or # FINAL ANSWER: <text>
+  const lineMatch = text.match(/(?:^|\n|\s)(?:\*{0,3}|#{1,6}\s*)(?:FINAL\s+ANSWER|CONSENSUS\s+ANSWER|FINAL\s+CONSENSUS)[\s:]*(?:\*{0,3})[:\s-]*([^\n\r]+)/i);
   if (lineMatch && lineMatch[1]) {
-    const cleaned = lineMatch[1].replace(/^[\[\("']|[\]\)"']$/g, '').trim();
-    if (cleaned.length > 0 && cleaned.length < 120) {
+    let cleaned = lineMatch[1].replace(/^[\[\("'\*]+|[\]\)"'\*]+$/g, '').trim();
+    cleaned = cleaned.replace(/^\*\*|\*\*$/g, '').trim();
+    if (cleaned.length > 0 && cleaned.length < 3000) {
+      return cleaned;
+    }
+  }
+
+  // 5. Match multiline: FINAL ANSWER:\n<text>
+  const multilineMatch = text.match(/(?:\*{0,3}|#{1,6}\s*)(?:FINAL\s+ANSWER|CONSENSUS\s+ANSWER|FINAL\s+CONSENSUS)[\s:]*(?:\*{0,3})\n+([^\n\r]+)/i);
+  if (multilineMatch && multilineMatch[1]) {
+    let cleaned = multilineMatch[1].replace(/^[\[\("'\*]+|[\]\)"'\*]+$/g, '').trim();
+    cleaned = cleaned.replace(/^\*\*|\*\*$/g, '').trim();
+    if (cleaned.length > 0 && cleaned.length < 3000) {
       return cleaned;
     }
   }
@@ -925,11 +955,18 @@ app.post('/api/benchmark/verify', (req, res) => {
 
     const evaluatedAnswer = finalAnswerA || finalAnswerB || 'None';
 
-    const { isCorrect, accuracyScore, notes } = evaluateCorrectness(
+    const { isCorrect: rawCorrect, accuracyScore: rawAccuracy, notes: rawNotes } = evaluateCorrectness(
       evaluatedAnswer,
       problem.groundTruth || [],
       problem.requiredKeywords
     );
+
+    const isAbortedLoop = !!isInfiniteLoop || !!req.body.abortedAsNonFunctional;
+    const isCorrect = isAbortedLoop ? false : rawCorrect;
+    const accuracyScore = isAbortedLoop ? 0 : rawAccuracy;
+    const notes = isAbortedLoop
+      ? 'Run aborted by infinite loop capper (repetitive/deadlock state). 0% accuracy assigned.'
+      : rawNotes;
 
     const inputToks = totalInputTokens || Math.round((totalTokens || 100) * 0.6);
     const outputToks = totalOutputTokens || Math.round((totalTokens || 100) * 0.4);
@@ -938,7 +975,7 @@ app.post('/api/benchmark/verify', (req, res) => {
     const wallClockSec = Math.max(0.2, (totalWallClockMs || 1000) / 1000);
     const tokensCount = Math.max(10, totalTokens || 100);
 
-    const consensusFactor = isInfiniteLoop
+    const consensusFactor = isAbortedLoop
       ? 0.0
       : consensusReached
       ? 1.0
@@ -949,14 +986,14 @@ app.post('/api/benchmark/verify', (req, res) => {
     // Cost-to-Consensus Efficiency Index Formula:
     // Efficiency = (Accuracy Score [0-100] * Consensus Factor) / (Wall Clock Time in Seconds * Total Tokens Generated) * 10,000
     // If the team failed to converge or entered an infinite token burn loop, score drops to 0.
-    const rawEfficiency = isInfiniteLoop
+    const rawEfficiency = isAbortedLoop
       ? 0
       : (effectiveAccuracy / (wallClockSec * tokensCount)) * 10000;
     const efficiencyIndex = Math.round(rawEfficiency * 100) / 100;
 
     // Determine Team Functionality Verdict
     let teamVerdict = 'Functional';
-    if (isInfiniteLoop) {
+    if (isAbortedLoop) {
       teamVerdict = 'Non-Functional (Infinite Token Burn Loop)';
     } else if (!consensusReached) {
       teamVerdict = 'Non-Functional (Failed to Reach Consensus)';
