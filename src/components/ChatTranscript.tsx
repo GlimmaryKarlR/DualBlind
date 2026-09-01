@@ -29,11 +29,11 @@ export const ChatTranscript: React.FC<ChatTranscriptProps> = ({
 
   // Helper to format text with highlighted FINAL ANSWER: [...] tags
   const renderTurnContent = (content: string, isAgentA: boolean) => {
-    const finalAnswerRegex = /(FINAL\s+ANSWER\s*:\s*\[.*?\]|FINAL\s+ANSWER\s*:\s*[^\n\r.]+)/gi;
+    const finalAnswerRegex = /((?:\*{0,3})(?:FINAL\s+ANSWER|CONSENSUS\s+ANSWER|FINAL\s+CONSENSUS)(?:\*{0,3})\s*:\s*\[[\s\S]*?\]|(?:\*{0,3})(?:FINAL\s+ANSWER|CONSENSUS\s+ANSWER|FINAL\s+CONSENSUS)(?:\*{0,3})\s*:\s*[^\n\r]+)/gi;
     const parts = content.split(finalAnswerRegex);
 
     return parts.map((part, index) => {
-      if (part.match(finalAnswerRegex)) {
+      if (part && part.match(finalAnswerRegex)) {
         return (
           <span
             key={index}
@@ -287,6 +287,12 @@ export const ChatTranscript: React.FC<ChatTranscriptProps> = ({
           {consensusStatus === 'turn_cap_exhausted' && (
             <span className="rounded-md bg-amber-50 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
               TURN_CAP_EXHAUSTED
+            </span>
+          )}
+          {(consensusStatus === 'infinite_loop_abort' || consensusStatus === 'infinite_burn_abort') && (
+            <span className="flex items-center gap-1 rounded-md bg-purple-50 px-2.5 py-0.5 font-mono text-[10px] font-bold text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+              <AlertCircle className="h-3.5 w-3.5" />
+              INFINITE_LOOP_CAPPED
             </span>
           )}
         </div>

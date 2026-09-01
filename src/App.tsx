@@ -16,6 +16,7 @@ import { getStoredApiKeys, countConfiguredKeys } from './utils/tokenStorage';
 import { getStoredRuns, saveRunUniversal, subscribeUniversalLeaderboard } from './utils/runStorage';
 import { generateBenchmarkTurnHybrid } from './utils/hybridTurnGenerator';
 import { computeVerificationClient } from './utils/verification';
+import { extractFinalAnswer } from './utils/clientInference';
 import { getActiveCatalogModels } from './utils/modelCatalog';
 import { VERIFIED_FREE_MODELS_POOL } from './utils/openRouterResolver';
 import { BENCHMARK_PROBLEMS } from './data/benchmarkProblems';
@@ -357,16 +358,104 @@ export default function App() {
 
   // Normalize string for consensus checking
   const normalize = (s: string) =>
-    s.toLowerCase().replace(/[$\\,\\.\\[\\]\\(\\)\\*\\_\\"\\']/g, '').trim();
+    s
+      .toLowerCase()
+      .replace(/\\boxed\{([^}]+)\}/g, '$1')
+      .replace(/[$\\,\\.\\[\\]\\(\\)\\*\\_\\"\\']/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-  // Extract final answer from content
+  // Extract final answer from content using enhanced parser
   const extractAnswerFromText = (text: string): string | null => {
-    const finalAnswerRegex = /(?:FINAL ANSWER|ANSWER|CONSENSUS):\s*\[?([^\]\n\r]+)\]?/i;
-    const match = text.match(finalAnswerRegex);
-    if (match && match[1]) {
-      return match[1].trim();
+    return extractFinalAnswer(text);
+  };
+
+  // Response-based Infinite Loop Capper (permits up to 3 back-and-forth repetitions before capping)
+  const detectResponseLoop = (turnList: ChatTurn[]): { isLoop: boolean; reason?: string } => {
+    if (turnList.length < 4) return { isLoop: false };
+
+    // 1. Allow up to 3 turns of back-and-forth repetition before capping
+    // Group turns by agent and count identical/near-identical responses
+    const agentATurns = turnList.filter((t) => t.agentId === 'agent_a');
+    const agentBTurns = turnList.filter((t) => t.agentId === 'agent_b');
+
+    const checkAgentRepetition = (agentTurns: ChatTurn[], agentLabel: string) => {
+      if (agentTurns.length < 3) return null;
+
+      // Check frequency of matching normalized contents
+      const clusters: { text: string; count: number; turns: number[] }[] = [];
+
+      for (const turn of agentTurns) {
+        const norm = normalize(turn.content);
+        if (norm.length < 25) continue;
+
+        let matched = false;
+        for (const cluster of clusters) {
+          if (cluster.text === norm || cluster.text.includes(norm) || norm.includes(cluster.text)) {
+            cluster.count++;
+            cluster.turns.push(turn.turnNumber);
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) {
+          clusters.push({ text: norm, count: 1, turns: [turn.turnNumber] });
+        }
+      }
+
+      const severeCluster = clusters.find((c) => c.count >= 3);
+      if (severeCluster) {
+        return `Repetitive response loop detected: ${agentLabel} repeated near-identical response content 3 times (turns ${severeCluster.turns.join(', ')}). Capping infinite loop.`;
+      }
+      return null;
+    };
+
+    const repA = checkAgentRepetition(agentATurns, 'Agent Alpha');
+    if (repA) return { isLoop: true, reason: repA };
+
+    const repB = checkAgentRepetition(agentBTurns, 'Agent Beta');
+    if (repB) return { isLoop: true, reason: repB };
+
+    // 2. Check for oscillating claims across turns (e.g. A: X, B: Y, A: X, B: Y, A: X, B: Y - 3 full oscillations)
+    const claims = turnList.filter((t) => t.extractedFinalAnswer !== null);
+    if (claims.length >= 6) {
+      const last6 = claims.slice(-6);
+      const c0 = normalize(last6[0].extractedFinalAnswer!);
+      const c1 = normalize(last6[1].extractedFinalAnswer!);
+      const c2 = normalize(last6[2].extractedFinalAnswer!);
+      const c3 = normalize(last6[3].extractedFinalAnswer!);
+      const c4 = normalize(last6[4].extractedFinalAnswer!);
+      const c5 = normalize(last6[5].extractedFinalAnswer!);
+
+      if (c0 === c2 && c2 === c4 && c1 === c3 && c3 === c5 && c0 !== c1) {
+        return {
+          isLoop: true,
+          reason: `Oscillating claims loop detected over 3 back-and-forth cycles (${last6[0].extractedFinalAnswer} vs ${last6[1].extractedFinalAnswer}). Capping infinite loop.`,
+        };
+      }
     }
-    return null;
+
+    // 3. Check for 3 consecutive unyielding conflicting claims after deliberation (6+ turns)
+    if (claims.length >= 6) {
+      const last3A = turnList.filter((t) => t.agentId === 'agent_a' && t.extractedFinalAnswer !== null).slice(-3);
+      const last3B = turnList.filter((t) => t.agentId === 'agent_b' && t.extractedFinalAnswer !== null).slice(-3);
+      if (
+        last3A.length === 3 &&
+        last3B.length === 3 &&
+        normalize(last3A[0].extractedFinalAnswer!) === normalize(last3A[1].extractedFinalAnswer!) &&
+        normalize(last3A[1].extractedFinalAnswer!) === normalize(last3A[2].extractedFinalAnswer!) &&
+        normalize(last3B[0].extractedFinalAnswer!) === normalize(last3B[1].extractedFinalAnswer!) &&
+        normalize(last3B[1].extractedFinalAnswer!) === normalize(last3B[2].extractedFinalAnswer!) &&
+        normalize(last3A[0].extractedFinalAnswer!) !== normalize(last3B[0].extractedFinalAnswer!)
+      ) {
+        return {
+          isLoop: true,
+          reason: `Persistent 3-turn conflicting claims deadlock without revision (${last3A[0].extractedFinalAnswer} vs ${last3B[0].extractedFinalAnswer}). Capping infinite loop.`,
+        };
+      }
+    }
+
+    return { isLoop: false };
   };
 
   // Helper to evaluate consensus state
@@ -379,11 +468,25 @@ export default function App() {
     let agreedAns: string | null = null;
     let hitCap = false;
 
+    // Check if either agent explicitly locked consensus or confirmed partner's answer
+    const lastTurn = turnList[turnList.length - 1];
+
     if (agentAClaims.length > 0 && agentBClaims.length > 0) {
       const latestA = agentAClaims[agentAClaims.length - 1].extractedFinalAnswer!;
       const latestB = agentBClaims[agentBClaims.length - 1].extractedFinalAnswer!;
 
-      if (normalize(latestA) === normalize(latestB) || latestA.includes(latestB) || latestB.includes(latestA)) {
+      const normA = normalize(latestA);
+      const normB = normalize(latestB);
+
+      const isExactMatch = normA === normB;
+      const isSubMatch = (normA.length > 3 && normB.includes(normA)) || (normB.length > 3 && normA.includes(normB));
+      const isNumMatch = (() => {
+        const numA = parseFloat(normA.replace(/[^0-9.-]/g, ''));
+        const numB = parseFloat(normB.replace(/[^0-9.-]/g, ''));
+        return !isNaN(numA) && !isNaN(numB) && Math.abs(numA - numB) < 0.001;
+      })();
+
+      if (isExactMatch || isSubMatch || isNumMatch) {
         reachedConsensus = true;
         agreedAns = latestA;
         setConsensusStatus('consensus_reached');
@@ -391,18 +494,51 @@ export default function App() {
       } else {
         setConsensusStatus('consensus_conflict');
       }
+    } else if (lastTurn && (agentAClaims.length > 0 || agentBClaims.length > 0)) {
+      // Check if current agent explicitly locked consensus to existing claim
+      const lowerContent = lastTurn.content.toLowerCase();
+      const hasConsensusPhrase =
+        lowerContent.includes('consensus locked') ||
+        lowerContent.includes('solution verified') ||
+        lowerContent.includes('i agree with') ||
+        lowerContent.includes('100% agreement') ||
+        lowerContent.includes('confirm your answer') ||
+        lowerContent.includes('agree with your final answer');
+
+      const existingClaim =
+        agentAClaims.length > 0
+          ? agentAClaims[agentAClaims.length - 1].extractedFinalAnswer!
+          : agentBClaims[agentBClaims.length - 1].extractedFinalAnswer!;
+
+      if (hasConsensusPhrase && existingClaim) {
+        reachedConsensus = true;
+        agreedAns = existingClaim;
+        setConsensusStatus('consensus_reached');
+        setFinalAgreedAnswer(existingClaim);
+      } else {
+        setConsensusStatus('single_claim');
+      }
     } else if (agentAClaims.length > 0 || agentBClaims.length > 0) {
       setConsensusStatus('single_claim');
     } else {
       setConsensusStatus('in_progress');
     }
 
-    if (!isUncapped && turnList.length >= maxTurns && !reachedConsensus) {
+    // Response-based Infinite Loop Capper
+    const loopCheck = detectResponseLoop(turnList);
+    let isLoopDeadlock = false;
+    let loopReason: string | undefined = undefined;
+
+    if (loopCheck.isLoop && !reachedConsensus) {
+      isLoopDeadlock = true;
+      loopReason = loopCheck.reason;
+      setConsensusStatus('infinite_loop_abort');
+    } else if (!isUncapped && turnList.length >= maxTurns && !reachedConsensus) {
       hitCap = true;
       setConsensusStatus('turn_cap_exhausted');
     }
 
-    return { reachedConsensus, agreedAns, hitCap };
+    return { reachedConsensus, agreedAns, hitCap, isLoopDeadlock, loopReason };
   };
 
   // Finalize & Verify Benchmark Run
@@ -570,6 +706,8 @@ export default function App() {
       reachedConsensus: boolean;
       agreedAns: string | null;
       hitCap: boolean;
+      isLoopDeadlock?: boolean;
+      loopReason?: string;
       requiresManualInput?: boolean;
     }> => {
       const turnNumber = currentTurnList.length + 1;
@@ -630,6 +768,8 @@ export default function App() {
         const costUsd = data.costUsd !== undefined ? data.costUsd : calculateTokenCost(inputTokens, outputTokens, currentAgent.model);
         const tokensPerSec = data.tokensPerSec || (latencyMs > 0 ? Math.round((outputTokens / (latencyMs / 1000)) * 10) / 10 : 30);
 
+        const extractedAnswer = data.extractedFinalAnswer || extractFinalAnswer(data.content);
+
         const newTurn: ChatTurn = {
           id: `turn-${turnNumber}-${Date.now()}`,
           agentId: currentAgent.id,
@@ -638,14 +778,14 @@ export default function App() {
           agentTurnNumber: agentTurnCount,
           timestamp: Date.now(),
           content: data.content,
-          extractedFinalAnswer: data.extractedFinalAnswer,
+          extractedFinalAnswer: extractedAnswer,
           latencyMs,
           inputTokens,
           outputTokens,
           totalTokens,
           costUsd,
           tokensPerSec,
-          isConsensusClaim: !!data.extractedFinalAnswer,
+          isConsensusClaim: !!extractedAnswer,
           modelUsed: data.modelUsed,
         };
 
@@ -702,7 +842,7 @@ export default function App() {
           isUncapped,
         };
 
-        const { reachedConsensus, agreedAns, hitCap } = evaluateConsensus(updatedTurns);
+        const { reachedConsensus, agreedAns, hitCap, isLoopDeadlock, loopReason } = evaluateConsensus(updatedTurns);
 
         setTurns(updatedTurns);
         setMetrics(nextMetrics);
@@ -714,6 +854,8 @@ export default function App() {
           reachedConsensus,
           agreedAns,
           hitCap,
+          isLoopDeadlock,
+          loopReason,
         };
       } catch (err: any) {
         console.error('Turn generation failed:', err);
@@ -823,20 +965,30 @@ export default function App() {
         isUncapped,
       };
 
-      const { reachedConsensus, agreedAns, hitCap } = evaluateConsensus(updatedTurns);
+      const { reachedConsensus, agreedAns, hitCap, isLoopDeadlock, loopReason } = evaluateConsensus(updatedTurns);
 
       setTurns(updatedTurns);
       setMetrics(nextMetrics);
       setWaitingForManualProxy(null);
       setActiveAgentTurn(null);
 
-      if (reachedConsensus || hitCap) {
+      if (isLoopDeadlock) {
+        await finalizeBenchmarkRun(updatedTurns, nextMetrics, false, null, true);
+      } else if (reachedConsensus || hitCap) {
         await finalizeBenchmarkRun(updatedTurns, nextMetrics, reachedConsensus, agreedAns);
       } else if (isRunningRef.current && !isPausedRef.current) {
         setTimeout(async () => {
           try {
             const nextRes = await executeSingleTurn(updatedTurns, nextMetrics);
-            if (nextRes.reachedConsensus || nextRes.hitCap) {
+            if (nextRes.isLoopDeadlock) {
+              await finalizeBenchmarkRun(
+                nextRes.newTurns,
+                nextRes.newMetrics,
+                false,
+                null,
+                true
+              );
+            } else if (nextRes.reachedConsensus || nextRes.hitCap) {
               await finalizeBenchmarkRun(
                 nextRes.newTurns,
                 nextRes.newMetrics,
@@ -950,6 +1102,17 @@ export default function App() {
 
         currentTurnList = result.newTurns;
         currentMetricsObj = result.newMetrics;
+
+        if (result.isLoopDeadlock) {
+          await finalizeBenchmarkRun(
+            currentTurnList,
+            currentMetricsObj,
+            false,
+            null,
+            true
+          );
+          break;
+        }
 
         if (result.reachedConsensus || result.hitCap) {
           await finalizeBenchmarkRun(

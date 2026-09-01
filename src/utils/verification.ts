@@ -136,11 +136,18 @@ export function computeVerificationClient(params: {
 
   const evaluatedAnswer = finalAnswerA || finalAnswerB || 'None';
 
-  const { isCorrect, accuracyScore, notes } = evaluateCorrectnessClient(
+  const { isCorrect: rawCorrect, accuracyScore: rawAccuracy, notes: rawNotes } = evaluateCorrectnessClient(
     evaluatedAnswer,
     problem.groundTruth || [problem.canonicalAnswer],
     problem.requiredKeywords
   );
+
+  // If flagged as an infinite loop / non-functional abort, accuracy is strictly 0 and isCorrect is strictly false
+  const isCorrect = abortedAsNonFunctional ? false : rawCorrect;
+  const accuracyScore = abortedAsNonFunctional ? 0 : rawAccuracy;
+  const notes = abortedAsNonFunctional
+    ? 'Run aborted by infinite loop capper (repetitive/deadlock state). 0% accuracy assigned.'
+    : rawNotes;
 
   const wallClockSec = Math.max(0.2, (totalWallClockMs || 1000) / 1000);
   const tokensCount = Math.max(10, totalTokens || 100);
