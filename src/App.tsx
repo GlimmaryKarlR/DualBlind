@@ -460,6 +460,17 @@ export default function App() {
 
   // Helper to evaluate consensus state
   const evaluateConsensus = (turnList: ChatTurn[]) => {
+    // Multi-agent consensus strictly requires at least 2 turns so both agents have deliberated
+    if (turnList.length < 2) {
+      const firstClaim = turnList[0]?.extractedFinalAnswer;
+      if (firstClaim) {
+        setConsensusStatus('single_claim');
+      } else {
+        setConsensusStatus('in_progress');
+      }
+      return { reachedConsensus: false, agreedAns: null, hitCap: false, isLoopDeadlock: false };
+    }
+
     const claims = turnList.filter((t) => t.extractedFinalAnswer !== null);
     const agentAClaims = claims.filter((t) => t.agentId === 'agent_a');
     const agentBClaims = claims.filter((t) => t.agentId === 'agent_b');
@@ -494,29 +505,34 @@ export default function App() {
       } else {
         setConsensusStatus('consensus_conflict');
       }
-    } else if (lastTurn && (agentAClaims.length > 0 || agentBClaims.length > 0)) {
-      // Check if current agent explicitly locked consensus to existing claim
+    } else if (lastTurn && turnList.length >= 2) {
+      // Check if the current agent explicitly confirmed/locked agreement with the partner's prior claim
       const lowerContent = lastTurn.content.toLowerCase();
-      const hasConsensusPhrase =
+      const hasPartnerAgreementPhrase =
+        lowerContent.includes('consensus confirmed and locked') ||
         lowerContent.includes('consensus locked') ||
-        lowerContent.includes('solution verified') ||
-        lowerContent.includes('i agree with') ||
-        lowerContent.includes('100% agreement') ||
+        lowerContent.includes('solution verified and complete') ||
+        lowerContent.includes('i agree with your') ||
+        lowerContent.includes('i concur with') ||
         lowerContent.includes('confirm your answer') ||
-        lowerContent.includes('agree with your final answer');
+        lowerContent.includes('agree with your final answer') ||
+        lowerContent.includes('accept your answer');
 
-      const existingClaim =
-        agentAClaims.length > 0
-          ? agentAClaims[agentAClaims.length - 1].extractedFinalAnswer!
-          : agentBClaims[agentBClaims.length - 1].extractedFinalAnswer!;
+      // Partner must have an existing claim that is being confirmed
+      const partnerClaim =
+        lastTurn.agentId === 'agent_b'
+          ? (agentAClaims.length > 0 ? agentAClaims[agentAClaims.length - 1].extractedFinalAnswer : null)
+          : (agentBClaims.length > 0 ? agentBClaims[agentBClaims.length - 1].extractedFinalAnswer : null);
 
-      if (hasConsensusPhrase && existingClaim) {
+      if (hasPartnerAgreementPhrase && partnerClaim) {
         reachedConsensus = true;
-        agreedAns = existingClaim;
+        agreedAns = partnerClaim;
         setConsensusStatus('consensus_reached');
-        setFinalAgreedAnswer(existingClaim);
-      } else {
+        setFinalAgreedAnswer(partnerClaim);
+      } else if (agentAClaims.length > 0 || agentBClaims.length > 0) {
         setConsensusStatus('single_claim');
+      } else {
+        setConsensusStatus('in_progress');
       }
     } else if (agentAClaims.length > 0 || agentBClaims.length > 0) {
       setConsensusStatus('single_claim');
