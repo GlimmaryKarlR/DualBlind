@@ -251,14 +251,14 @@ export function getTierBadge(efficiencyIndex?: number, isCorrect?: boolean): {
       bg: 'bg-emerald-50 dark:bg-emerald-950/30',
       border: 'border-emerald-200 dark:border-emerald-800',
     };
-  } else if (efficiencyIndex >= 400) {
+  } else if (eff >= 400) {
     return {
       label: 'A-Tier (High Efficiency)',
       color: 'text-blue-600 dark:text-blue-400',
       bg: 'bg-blue-50 dark:bg-blue-950/30',
       border: 'border-blue-200 dark:border-blue-800',
     };
-  } else if (efficiencyIndex >= 200) {
+  } else if (eff >= 200) {
     return {
       label: 'B-Tier (Moderate Compute)',
       color: 'text-amber-600 dark:text-amber-400',

@@ -16,6 +16,73 @@ const FIRESTORE_COLLECTION = 'benchmark_runs';
 export const SEED_RUNS: BenchmarkRunRecord[] = HISTORICAL_BENCHMARK_RUNS;
 
 /**
+ * Normalizes any run record (Firestore document, local cache, or server response)
+ * into a fully populated, type-safe BenchmarkRunRecord.
+ */
+export function normalizeRunRecord(raw: any, fallbackId?: string): BenchmarkRunRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = raw.id || fallbackId;
+  if (!id) return null;
+
+  const rawMetrics = raw.metrics || {};
+  const effIndex = typeof rawMetrics.efficiencyIndex === 'number' && !isNaN(rawMetrics.efficiencyIndex)
+    ? rawMetrics.efficiencyIndex
+    : typeof raw.efficiencyIndex === 'number' && !isNaN(raw.efficiencyIndex)
+    ? raw.efficiencyIndex
+    : 0;
+
+  const turnsCount = Number(rawMetrics.turnsCount ?? raw.turnsCount ?? 0) || 0;
+  const totalCostUsd = Number(rawMetrics.totalCostUsd ?? raw.totalCostUsd ?? 0) || 0;
+  const costPerTurnUsd = Number(rawMetrics.costPerTurnUsd ?? (turnsCount > 0 ? totalCostUsd / turnsCount : 0)) || 0;
+
+  return {
+    id: String(id),
+    problemId: raw.problemId || 'unknown_problem',
+    problemTitle: raw.problemTitle || raw.title || 'Benchmark Problem',
+    topic: raw.topic || 'General Reasoning',
+    difficulty: raw.difficulty || 'medium',
+    date: raw.date || new Date().toISOString(),
+    agentAConfig: raw.agentAConfig || { id: 'agent_a', name: 'Agent Alpha', model: 'Unknown', provider: 'unknown' },
+    agentBConfig: raw.agentBConfig || { id: 'agent_b', name: 'Agent Beta', model: 'Unknown', provider: 'unknown' },
+    isUncapped: raw.isUncapped ?? true,
+    maxTurns: Number(raw.maxTurns ?? raw.metrics?.turnsCount ?? 20) || 20,
+    suite: raw.suite,
+    suiteId: raw.suiteId,
+    domain: raw.domain,
+    sourceCitation: raw.sourceCitation,
+    turns: Array.isArray(raw.turns) ? raw.turns : [],
+    consensusStatus: raw.consensusStatus || (rawMetrics.consensusReached ? 'agreed' : 'idle'),
+    finalAgreedAnswer: raw.finalAgreedAnswer ?? null,
+    verification: raw.verification ?? null,
+    metrics: {
+      totalWallClockMs: Number(rawMetrics.totalWallClockMs ?? raw.totalWallClockMs ?? 0) || 0,
+      totalTokens: Number(rawMetrics.totalTokens ?? raw.totalTokens ?? 0) || 0,
+      totalInputTokens: Number(rawMetrics.totalInputTokens ?? raw.totalInputTokens ?? 0) || 0,
+      totalOutputTokens: Number(rawMetrics.totalOutputTokens ?? raw.totalOutputTokens ?? 0) || 0,
+      totalCostUsd,
+      costPerTurnUsd,
+      burnRateUsdPerMin: Number(rawMetrics.burnRateUsdPerMin ?? 0) || 0,
+      agentACostUsd: Number(rawMetrics.agentACostUsd ?? 0) || 0,
+      agentBCostUsd: Number(rawMetrics.agentBCostUsd ?? 0) || 0,
+      tokensPerSec: Number(rawMetrics.tokensPerSec ?? raw.tokensPerSec ?? 0) || 0,
+      agentATokens: Number(rawMetrics.agentATokens ?? 0) || 0,
+      agentBTokens: Number(rawMetrics.agentBTokens ?? 0) || 0,
+      agentALatencyMs: Number(rawMetrics.agentALatencyMs ?? 0) || 0,
+      agentBLatencyMs: Number(rawMetrics.agentBLatencyMs ?? 0) || 0,
+      turnsCount,
+      consensusTurn: rawMetrics.consensusTurn ?? null,
+      efficiencyIndex: effIndex,
+      consensusReached: Boolean(rawMetrics.consensusReached ?? raw.consensusReached),
+      accuracyScore: Number(rawMetrics.accuracyScore ?? raw.accuracyScore ?? 0) || 0,
+      isCorrect: Boolean(rawMetrics.isCorrect ?? raw.isCorrect),
+      teamFunctionality: rawMetrics.teamFunctionality || raw.teamFunctionality || 'pending',
+      isInfiniteLoopDetected: Boolean(rawMetrics.isInfiniteLoopDetected ?? raw.isInfiniteLoop),
+      isUncapped: rawMetrics.isUncapped ?? raw.isUncapped ?? true,
+    },
+  };
+}
+
+/**
  * Merge and deduplicate runs by ID, sorting by newest date first without artificial caps.
  */
 export function mergeAndDeduplicateRuns(
@@ -24,26 +91,16 @@ export function mergeAndDeduplicateRuns(
 ): BenchmarkRunRecord[] {
   const map = new Map<string, BenchmarkRunRecord>();
   // Fallbacks first (e.g. local cache)
-  for (const item of fallback) {
-    if (
-      item &&
-      item.id &&
-      item.problemTitle &&
-      item.metrics &&
-      typeof item.metrics.efficiencyIndex === 'number'
-    ) {
+  for (const raw of fallback) {
+    const item = normalizeRunRecord(raw);
+    if (item) {
       map.set(item.id, item);
     }
   }
-  // Primary overwrite (cloud runs or newest local runs)
-  for (const item of primary) {
-    if (
-      item &&
-      item.id &&
-      item.problemTitle &&
-      item.metrics &&
-      typeof item.metrics.efficiencyIndex === 'number'
-    ) {
+  // Primary overwrite (cloud runs or newest runs)
+  for (const raw of primary) {
+    const item = normalizeRunRecord(raw);
+    if (item) {
       map.set(item.id, item);
     }
   }
@@ -88,13 +145,16 @@ function sanitizeForFirestore<T>(data: T): T {
  * Save run record universally (to Firestore Cloud Database + local storage)
  */
 export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<BenchmarkRunRecord[]> {
-  // 1. Immediately cache locally (lightweight version without full transcripts to avoid QuotaExceededError)
-  let updatedLocal: BenchmarkRunRecord[] = [record];
+  const normalized = normalizeRunRecord(record) || record;
+
+  // 1. Immediately cache locally
+  let updatedLocal: BenchmarkRunRecord[] = [normalized];
   try {
     const current = getStoredRuns();
-    updatedLocal = mergeAndDeduplicateRuns([record], current);
+    updatedLocal = mergeAndDeduplicateRuns([normalized], current);
     try {
-      const lightCache = updatedLocal.slice(0, 100).map((r) => {
+      // Store lightweight cache without transcripts to prevent QuotaExceededError
+      const lightCache = updatedLocal.slice(0, 300).map((r) => {
         const { turns, ...rest } = r;
         return { ...rest, turns: [] };
       });
@@ -111,12 +171,12 @@ export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<Benc
   if (db) {
     try {
       const sanitizedRecord = sanitizeForFirestore({
-        ...record,
+        ...normalized,
         updatedAt: new Date().toISOString(),
       });
-      const docRef = doc(db, FIRESTORE_COLLECTION, record.id);
+      const docRef = doc(db, FIRESTORE_COLLECTION, normalized.id);
       await setDoc(docRef, sanitizedRecord, { merge: true });
-      console.info(`[Universal Leaderboard] Benchmark run ${record.id} synced to Firestore.`);
+      console.info(`[Universal Leaderboard] Benchmark run ${normalized.id} synced to Firestore.`);
     } catch (firestoreErr) {
       console.error('[Universal Leaderboard] Cloud sync error:', firestoreErr);
     }
@@ -134,12 +194,13 @@ export async function uploadRunsToCloud(runs: BenchmarkRunRecord[]): Promise<voi
 
   try {
     for (const run of runs) {
-      if (!run || !run.id) continue;
+      const normalized = normalizeRunRecord(run);
+      if (!normalized || !normalized.id) continue;
       const sanitized = sanitizeForFirestore({
-        ...run,
+        ...normalized,
         updatedAt: new Date().toISOString(),
       });
-      const docRef = doc(db, FIRESTORE_COLLECTION, run.id);
+      const docRef = doc(db, FIRESTORE_COLLECTION, normalized.id);
       await setDoc(docRef, sanitized, { merge: true });
     }
     console.info(`[Universal Leaderboard] Successfully synced ${runs.length} runs to Firestore.`);
@@ -175,22 +236,16 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
 
     const cloudRuns: BenchmarkRunRecord[] = [];
     snapshot.forEach((docSnap) => {
-      const data = docSnap.data() as BenchmarkRunRecord;
-      if (
-        data &&
-        data.id &&
-        data.problemTitle &&
-        data.metrics &&
-        typeof data.metrics.efficiencyIndex === 'number'
-      ) {
-        cloudRuns.push(data);
+      const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
+      if (normalized) {
+        cloudRuns.push(normalized);
       }
     });
 
     const localCached = getStoredRuns();
     const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
     try {
-      const lightCache = merged.slice(0, 100).map((r) => {
+      const lightCache = merged.slice(0, 300).map((r) => {
         const { turns, ...rest } = r;
         return { ...rest, turns: [] };
       });
@@ -200,7 +255,7 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
     }
     return merged;
   } catch (error) {
-    console.warn('[Universal Leaderboard] Fetch from cloud failed, using local cache:', error);
+    console.warn('[Universal Leaderboard] Fetch from cloud failed, trying local cache:', error);
     return getStoredRuns();
   }
 }
@@ -211,9 +266,19 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
 export function subscribeUniversalLeaderboard(
   onUpdate: (runs: BenchmarkRunRecord[]) => void
 ): Unsubscribe | null {
+  // First, eagerly fetch all documents via atomic getDocs so the complete dataset is loaded immediately
+  fetchUniversalLeaderboard()
+    .then((allRuns) => {
+      if (Array.isArray(allRuns) && allRuns.length > 0) {
+        onUpdate(allRuns);
+      }
+    })
+    .catch(() => {
+      // Handled by fetchUniversalLeaderboard
+    });
+
   const db = getFirestoreDb();
   if (!db) {
-    onUpdate(getStoredRuns());
     return null;
   }
 
@@ -225,41 +290,27 @@ export function subscribeUniversalLeaderboard(
       (snapshot) => {
         const cloudRuns: BenchmarkRunRecord[] = [];
         snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as BenchmarkRunRecord;
-          if (
-            data &&
-            data.id &&
-            data.problemTitle &&
-            data.metrics &&
-            typeof data.metrics.efficiencyIndex === 'number'
-          ) {
-            cloudRuns.push(data);
+          const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
+          if (normalized) {
+            cloudRuns.push(normalized);
           }
         });
 
-        const localCached = getStoredRuns();
-        const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
-        try {
-          const lightCache = merged.slice(0, 100).map((r) => {
-            const { turns, ...rest } = r;
-            return { ...rest, turns: [] };
-          });
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
-        } catch {
-          // Quota safe - ignore
+        if (cloudRuns.length > 0) {
+          const localCached = getStoredRuns();
+          const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
+          onUpdate(merged);
         }
-        onUpdate(merged);
       },
       (error) => {
-        console.warn('[Universal Leaderboard] Realtime subscription notice:', error);
-        onUpdate(getStoredRuns());
+        // When WebChannel has a transient reconnect or disconnect notice, DO NOT wipe existing state!
+        console.warn('[Universal Leaderboard] Realtime listener notice (retaining existing data):', error);
       }
     );
 
     return unsubscribe;
   } catch (err) {
-    console.warn('[Universal Leaderboard] Subscription setup failed, falling back to local cache:', err);
-    onUpdate(getStoredRuns());
+    console.warn('[Universal Leaderboard] Subscription setup notice:', err);
     return null;
   }
 }
