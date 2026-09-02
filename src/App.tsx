@@ -152,21 +152,30 @@ export default function App() {
       }
     });
 
-    // 2. Fetch backup from backend endpoint if available
+    // 2. Fetch backup from local backend endpoint if available (non-Vercel environments)
     fetch('/api/leaderboard/runs')
       .then((res) => {
-        if (!res.ok) return null;
+        const contentType = res.headers.get('content-type');
+        if (!res.ok || !contentType || !contentType.includes('application/json')) return null;
         return res.json();
       })
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setRunsHistory((prev) => {
             const map = new Map<string, BenchmarkRunRecord>();
-            data.forEach((item) => map.set(item.id, item));
-            prev.forEach((item) => {
-              if (!map.has(item.id)) map.set(item.id, item);
+            data.forEach((item) => {
+              if (item && item.id && item.problemTitle && item.metrics) map.set(item.id, item);
             });
-            return Array.from(map.values());
+            prev.forEach((item) => {
+              if (item && item.id && item.problemTitle && item.metrics && !map.has(item.id)) {
+                map.set(item.id, item);
+              }
+            });
+            return Array.from(map.values()).sort((a, b) => {
+              const timeA = a.date ? new Date(a.date).getTime() : 0;
+              const timeB = b.date ? new Date(b.date).getTime() : 0;
+              return timeB - timeA;
+            });
           });
         }
       })
