@@ -13,7 +13,7 @@ import {
   ProviderApiKeys,
 } from './types/benchmark';
 import { getStoredApiKeys, countConfiguredKeys } from './utils/tokenStorage';
-import { getStoredRuns, saveRunUniversal, subscribeUniversalLeaderboard } from './utils/runStorage';
+import { getStoredRuns, saveRunUniversal, subscribeUniversalLeaderboard, fetchUniversalLeaderboard, normalizeRunRecord } from './utils/runStorage';
 import { generateBenchmarkTurnHybrid } from './utils/hybridTurnGenerator';
 import { computeVerificationClient } from './utils/verification';
 import { extractFinalAnswer } from './utils/clientInference';
@@ -145,14 +145,21 @@ export default function App() {
 
   // Load & Subscribe to Universal Leaderboard in Real Time
   useEffect(() => {
-    // 1. Set up real-time listener to Firestore
+    // 1. Eagerly fetch all runs directly from Firestore via atomic getDocs
+    fetchUniversalLeaderboard().then((runs) => {
+      if (Array.isArray(runs) && runs.length > 0) {
+        setRunsHistory(runs);
+      }
+    });
+
+    // 2. Set up real-time listener to Firestore for new incoming runs
     const unsubscribe = subscribeUniversalLeaderboard((runs) => {
       if (Array.isArray(runs) && runs.length > 0) {
         setRunsHistory(runs);
       }
     });
 
-    // 2. Fetch backup from local backend endpoint if available (non-Vercel environments)
+    // 3. Fetch backup from local backend endpoint if available (non-Vercel environments)
     fetch('/api/leaderboard/runs')
       .then((res) => {
         const contentType = res.headers.get('content-type');
@@ -163,13 +170,13 @@ export default function App() {
         if (Array.isArray(data) && data.length > 0) {
           setRunsHistory((prev) => {
             const map = new Map<string, BenchmarkRunRecord>();
-            data.forEach((item) => {
-              if (item && item.id && item.problemTitle && item.metrics) map.set(item.id, item);
-            });
             prev.forEach((item) => {
-              if (item && item.id && item.problemTitle && item.metrics && !map.has(item.id)) {
-                map.set(item.id, item);
-              }
+              const norm = normalizeRunRecord(item);
+              if (norm) map.set(norm.id, norm);
+            });
+            data.forEach((item) => {
+              const norm = normalizeRunRecord(item);
+              if (norm && !map.has(norm.id)) map.set(norm.id, norm);
             });
             return Array.from(map.values()).sort((a, b) => {
               const timeA = a.date ? new Date(a.date).getTime() : 0;
@@ -581,28 +588,31 @@ export default function App() {
 
       try {
         let verifyData: any = null;
-        try {
-          const verifyRes = await fetch('/api/benchmark/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              problem: currentProblem,
-              finalAnswerA: finalAnswer || finalTurns[finalTurns.length - 1]?.extractedFinalAnswer,
-              finalAnswerB: finalAnswer,
-              totalTokens: finalMetrics.totalTokens,
-              totalWallClockMs: finalMetrics.totalWallClockMs,
-              totalCostUsd: finalMetrics.totalCostUsd,
-              consensusReached: abortedAsNonFunctional ? false : consensusReached,
-              isUncapped,
-              abortedAsNonFunctional,
-              turnsCount: finalTurns.length,
-            }),
-          });
-          if (verifyRes.ok) {
-            verifyData = await verifyRes.json();
+        const isBackendAvailable = typeof window !== 'undefined' && !window.location.hostname.includes('vercel.app');
+        if (isBackendAvailable) {
+          try {
+            const verifyRes = await fetch('/api/benchmark/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                problem: currentProblem,
+                finalAnswerA: finalAnswer || finalTurns[finalTurns.length - 1]?.extractedFinalAnswer,
+                finalAnswerB: finalAnswer,
+                totalTokens: finalMetrics.totalTokens,
+                totalWallClockMs: finalMetrics.totalWallClockMs,
+                totalCostUsd: finalMetrics.totalCostUsd,
+                consensusReached: abortedAsNonFunctional ? false : consensusReached,
+                isUncapped,
+                abortedAsNonFunctional,
+                turnsCount: finalTurns.length,
+              }),
+            });
+            if (verifyRes.ok) {
+              verifyData = await verifyRes.json();
+            }
+          } catch {
+            // Server offline or returned non-200
           }
-        } catch {
-          // Server offline or returned 404
         }
 
         // If server verification was unavailable or returned non-JSON / 404, compute on client
@@ -704,11 +714,13 @@ export default function App() {
             })
             .catch((err) => console.warn('Auto-save run sync notice:', err));
 
-          fetch('/api/leaderboard/save-run', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(autoRecord),
-          }).catch(() => {});
+          if (typeof window !== 'undefined' && !window.location.hostname.includes('vercel.app')) {
+            fetch('/api/leaderboard/save-run', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(autoRecord),
+            }).catch(() => {});
+          }
         } catch (saveErr) {
           console.warn('Auto-upload benchmark run notice:', saveErr);
           setIsRunSaved(true);
@@ -1242,12 +1254,14 @@ export default function App() {
       const updated = await saveRunUniversal(record);
       setRunsHistory(updated);
 
-      // Also notify backend endpoint if online
-      fetch('/api/leaderboard/save-run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(record),
-      }).catch(() => {});
+      // Also notify backend endpoint if online and not a static host
+      if (typeof window !== 'undefined' && !window.location.hostname.includes('vercel.app')) {
+        fetch('/api/leaderboard/save-run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(record),
+        }).catch(() => {});
+      }
     } catch (e) {
       console.warn('Leaderboard universal save notice:', e);
       setIsRunSaved(true);

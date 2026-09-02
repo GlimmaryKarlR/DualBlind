@@ -41,12 +41,12 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
     metrics.isCorrect
   );
 
-  const wallClockSec = metrics.totalWallClockMs > 0 ? (metrics.totalWallClockMs / 1000).toFixed(2) : '0.00';
-  const tokensPerSec = metrics.tokensPerSec.toFixed(1);
+  const wallClockSec = (metrics?.totalWallClockMs ?? 0) > 0 ? ((metrics?.totalWallClockMs ?? 0) / 1000).toFixed(2) : '0.00';
+  const tokensPerSec = (metrics?.tokensPerSec ?? 0).toFixed(1);
 
   // Compute burn velocity ($/min)
-  const wallClockMinutes = metrics.totalWallClockMs > 0 ? metrics.totalWallClockMs / 60000 : 0.001;
-  const burnRatePerMin = metrics.totalCostUsd > 0 ? metrics.totalCostUsd / wallClockMinutes : 0;
+  const wallClockMinutes = (metrics?.totalWallClockMs ?? 0) > 0 ? (metrics.totalWallClockMs / 60000) : 0.001;
+  const burnRatePerMin = (metrics?.totalCostUsd ?? 0) > 0 ? (metrics.totalCostUsd / wallClockMinutes) : 0;
 
   return (
     <div className="flex flex-col gap-3">

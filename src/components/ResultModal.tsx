@@ -127,7 +127,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </span>
               <div className="flex items-baseline gap-1 mt-0.5">
                 <span className="text-4xl font-black font-mono text-indigo-600 dark:text-indigo-400">
-                  {metrics.efficiencyIndex.toFixed(1)}
+                  {(metrics?.efficiencyIndex ?? 0).toFixed(1)}
                 </span>
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-400">
                   pts

@@ -282,18 +282,35 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     ? (filteredRuns.reduce((acc, r) => acc + (r.metrics?.totalWallClockMs || 0), 0) / totalFilteredRuns / 1000).toFixed(1)
     : '0';
 
-  // Export handlers (Always exports ALL filtered/sorted runs without display caps)
-  const exportJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(sortedRuns, null, 2));
+  // Export handlers (Always exports ALL runs without display caps using safe object URLs)
+  const exportAllJSON = () => {
+    if (runs.length === 0) return;
+    const blob = new Blob([JSON.stringify(runs, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `dualblind-filtered-runs-${Date.now()}.json`);
+    downloadAnchor.setAttribute('href', url);
+    downloadAnchor.setAttribute('download', `dualblind-all-${runs.length}-runs-${Date.now()}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  const exportFilteredJSON = () => {
+    if (sortedRuns.length === 0) return;
+    const blob = new Blob([JSON.stringify(sortedRuns, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', url);
+    downloadAnchor.setAttribute('download', `dualblind-filtered-${sortedRuns.length}-runs-${Date.now()}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
 
   const exportCSV = () => {
+    if (sortedRuns.length === 0) return;
     const headers = [
       'ID',
       'Problem Title',
@@ -339,13 +356,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       ].join(',');
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent([headers.join(','), ...rows].join('\n'));
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', csvContent);
+    downloadAnchor.setAttribute('href', url);
     downloadAnchor.setAttribute('download', `dualblind-benchmarks-${Date.now()}.csv`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
 
   return (
@@ -367,9 +387,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </span>
         </div>
         <div className="flex items-center gap-3 text-[11px] font-mono text-indigo-600 dark:text-indigo-400">
-          <span>{runs.length} total synced runs</span>
+          <span className="font-semibold">{runs.length} Universal Cloud Runs</span>
           <span className="text-slate-300 dark:text-slate-700">•</span>
-          <span>Showing top {Math.min(displayLimit, sortedRuns.length)} of {sortedRuns.length}</span>
+          <span>Showing Top {Math.min(100, sortedRuns.length)} of {sortedRuns.length} filtered</span>
           <span className="text-slate-300 dark:text-slate-700">•</span>
           <span>Firestore Real-Time</span>
         </div>
@@ -573,24 +593,33 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             </div>
 
             {/* Export Actions */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 onClick={exportCSV}
                 disabled={sortedRuns.length === 0}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
-                title={`Export all ${sortedRuns.length} filtered runs as CSV`}
+                title={`Export ${sortedRuns.length} filtered runs as CSV`}
               >
                 <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
                 <span className="hidden sm:inline">CSV ({sortedRuns.length})</span>
               </button>
               <button
-                onClick={exportJSON}
+                onClick={exportFilteredJSON}
                 disabled={sortedRuns.length === 0}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
-                title={`Export all ${sortedRuns.length} filtered runs as JSON`}
+                title={`Export ${sortedRuns.length} filtered runs as JSON`}
               >
                 <Download className="h-3.5 w-3.5 text-indigo-600" />
-                <span className="hidden sm:inline">JSON ({sortedRuns.length})</span>
+                <span className="hidden sm:inline">Filtered JSON ({sortedRuns.length})</span>
+              </button>
+              <button
+                onClick={exportAllJSON}
+                disabled={runs.length === 0}
+                className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2.5 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 cursor-pointer shadow-2xs"
+                title={`Export all ${runs.length} universal benchmark runs with complete transcripts`}
+              >
+                <Download className="h-3.5 w-3.5 text-indigo-700 dark:text-indigo-300" />
+                <span>All JSON ({runs.length})</span>
               </button>
             </div>
           </div>
@@ -1178,7 +1207,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       {/* Efficiency Index */}
                       <td className="px-4 py-3.5 text-right">
                         <div className="font-mono font-bold text-sm text-indigo-600 dark:text-indigo-400">
-                          {run.metrics.efficiencyIndex.toFixed(1)}
+                          {effIndex.toFixed(1)}
                         </div>
                         <span className={`text-[10px] font-bold ${tier.color}`}>
                           {tier.label.split(' ')[0]} Tier
@@ -1229,11 +1258,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     <span className="text-slate-400">vs</span>
                     <span className="font-semibold text-emerald-600 dark:text-emerald-400">{modalBInfo.fullDisplayName}</span>
                     <span>•</span>
-                    <span>{inspectModalRun.metrics.turnsCount} Turns</span>
+                    <span>{inspectModalRun.metrics?.turnsCount ?? 0} Turns</span>
                     <span>•</span>
-                    <span>Cost: {formatCurrency(inspectModalRun.metrics.totalCostUsd)}</span>
+                    <span>Cost: {formatCurrency(inspectModalRun.metrics?.totalCostUsd ?? 0)}</span>
                     <span>•</span>
-                    <span>Efficiency: {inspectModalRun.metrics.efficiencyIndex.toFixed(1)} pts</span>
+                    <span>Efficiency: {(inspectModalRun.metrics?.efficiencyIndex ?? 0).toFixed(1)} pts</span>
                   </p>
                 </div>
 
