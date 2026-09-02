@@ -11,12 +11,14 @@ export function fireSuccessConfetti() {
   });
 }
 
-export function formatTime(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
+export function formatTime(ms?: number): string {
+  if (typeof ms !== 'number' || isNaN(ms)) return '0.00s';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-export function formatNumber(num: number): string {
+export function formatNumber(num?: number): string {
+  if (typeof num !== 'number' || isNaN(num)) return '0';
   return new Intl.NumberFormat('en-US').format(num);
 }
 
@@ -24,8 +26,8 @@ export function formatNumber(num: number): string {
  * Formats a USD amount with precision appropriate for micro-dollar LLM pricing
  * e.g., $0.00012, $0.0035, $0.15
  */
-export function formatCurrency(usd: number): string {
-  if (usd === 0) return '$0.00000';
+export function formatCurrency(usd?: number): string {
+  if (typeof usd !== 'number' || isNaN(usd) || usd === 0) return '$0.00000';
   if (usd < 0.001) {
     return `$${usd.toFixed(5)}`;
   }
@@ -225,7 +227,7 @@ export function getTeamFunctionalityBadge(
   }
 }
 
-export function getTierBadge(efficiencyIndex: number, isCorrect: boolean): {
+export function getTierBadge(efficiencyIndex?: number, isCorrect?: boolean): {
   label: string;
   color: string;
   bg: string;
@@ -240,7 +242,9 @@ export function getTierBadge(efficiencyIndex: number, isCorrect: boolean): {
     };
   }
 
-  if (efficiencyIndex >= 800) {
+  const eff = typeof efficiencyIndex === 'number' && !isNaN(efficiencyIndex) ? efficiencyIndex : 0;
+
+  if (eff >= 800) {
     return {
       label: 'S-Tier (Hyper-Efficient)',
       color: 'text-emerald-600 dark:text-emerald-400',

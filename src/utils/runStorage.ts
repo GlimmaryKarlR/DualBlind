@@ -25,11 +25,27 @@ export function mergeAndDeduplicateRuns(
   const map = new Map<string, BenchmarkRunRecord>();
   // Fallbacks first (e.g. local cache)
   for (const item of fallback) {
-    if (item && item.id && item.problemTitle && item.metrics) map.set(item.id, item);
+    if (
+      item &&
+      item.id &&
+      item.problemTitle &&
+      item.metrics &&
+      typeof item.metrics.efficiencyIndex === 'number'
+    ) {
+      map.set(item.id, item);
+    }
   }
   // Primary overwrite (cloud runs or newest local runs)
   for (const item of primary) {
-    if (item && item.id && item.problemTitle && item.metrics) map.set(item.id, item);
+    if (
+      item &&
+      item.id &&
+      item.problemTitle &&
+      item.metrics &&
+      typeof item.metrics.efficiencyIndex === 'number'
+    ) {
+      map.set(item.id, item);
+    }
   }
 
   const list = Array.from(map.values());
@@ -72,12 +88,20 @@ function sanitizeForFirestore<T>(data: T): T {
  * Save run record universally (to Firestore Cloud Database + local storage)
  */
 export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<BenchmarkRunRecord[]> {
-  // 1. Immediately cache locally
+  // 1. Immediately cache locally (lightweight version without full transcripts to avoid QuotaExceededError)
   let updatedLocal: BenchmarkRunRecord[] = [record];
   try {
     const current = getStoredRuns();
     updatedLocal = mergeAndDeduplicateRuns([record], current);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
+    try {
+      const lightCache = updatedLocal.slice(0, 100).map((r) => {
+        const { turns, ...rest } = r;
+        return { ...rest, turns: [] };
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
+    } catch {
+      // Ignore quota exceeded error on client
+    }
   } catch (e) {
     console.warn('Local storage cache update failed:', e);
   }
@@ -152,7 +176,13 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
     const cloudRuns: BenchmarkRunRecord[] = [];
     snapshot.forEach((docSnap) => {
       const data = docSnap.data() as BenchmarkRunRecord;
-      if (data && data.id && data.problemTitle && data.metrics) {
+      if (
+        data &&
+        data.id &&
+        data.problemTitle &&
+        data.metrics &&
+        typeof data.metrics.efficiencyIndex === 'number'
+      ) {
         cloudRuns.push(data);
       }
     });
@@ -160,9 +190,13 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
     const localCached = getStoredRuns();
     const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-    } catch (e) {
-      console.warn('LocalStorage cache write error:', e);
+      const lightCache = merged.slice(0, 100).map((r) => {
+        const { turns, ...rest } = r;
+        return { ...rest, turns: [] };
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
+    } catch {
+      // Quota safe - ignore
     }
     return merged;
   } catch (error) {
@@ -192,7 +226,13 @@ export function subscribeUniversalLeaderboard(
         const cloudRuns: BenchmarkRunRecord[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as BenchmarkRunRecord;
-          if (data && data.id && data.problemTitle && data.metrics) {
+          if (
+            data &&
+            data.id &&
+            data.problemTitle &&
+            data.metrics &&
+            typeof data.metrics.efficiencyIndex === 'number'
+          ) {
             cloudRuns.push(data);
           }
         });
@@ -200,9 +240,13 @@ export function subscribeUniversalLeaderboard(
         const localCached = getStoredRuns();
         const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        } catch (e) {
-          console.warn('LocalStorage cache write error:', e);
+          const lightCache = merged.slice(0, 100).map((r) => {
+            const { turns, ...rest } = r;
+            return { ...rest, turns: [] };
+          });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
+        } catch {
+          // Quota safe - ignore
         }
         onUpdate(merged);
       },
