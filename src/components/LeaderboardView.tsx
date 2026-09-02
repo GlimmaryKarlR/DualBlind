@@ -273,7 +273,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   // Live Aggregates on the Filtered Dataset
   const totalFilteredRuns = filteredRuns.length;
   const avgEfficiency = totalFilteredRuns > 0
-    ? (filteredRuns.reduce((acc, r) => acc + (typeof r.metrics?.efficiencyIndex || 0), 0) / totalFilteredRuns).toFixed(1)
+    ? (filteredRuns.reduce((acc, r) => acc + (r.metrics?.efficiencyIndex || 0), 0) / totalFilteredRuns).toFixed(1)
     : '0';
   const solvedCount = filteredRuns.filter((r) => Boolean(r.metrics?.isCorrect)).length;
   const accuracyRate = totalFilteredRuns > 0 ? Math.round((solvedCount / totalFilteredRuns) * 100) : 0;
@@ -1178,7 +1178,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       {/* Efficiency Index */}
                       <td className="px-4 py-3.5 text-right">
                         <div className="font-mono font-bold text-sm text-indigo-600 dark:text-indigo-400">
-                          {efficiencyIndex.toFixed(1)}
+                          {run.metrics.efficiencyIndex.toFixed(1)}
                         </div>
                         <span className={`text-[10px] font-bold ${tier.color}`}>
                           {tier.label.split(' ')[0]} Tier
@@ -1233,7 +1233,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     <span>•</span>
                     <span>Cost: {formatCurrency(inspectModalRun.metrics.totalCostUsd)}</span>
                     <span>•</span>
-                    <span>Efficiency: {(inspectModalRun.metrics?.efficiencyIndex ?? 0).toFixed(1)} pts</span>
+                    <span>Efficiency: {inspectModalRun.metrics.efficiencyIndex.toFixed(1)} pts</span>
                   </p>
                 </div>
 
