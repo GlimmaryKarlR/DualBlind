@@ -72,6 +72,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   // UI States
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(true);
   const [inspectModalRun, setInspectModalRun] = useState<BenchmarkRunRecord | null>(null);
+  const [displayLimit, setDisplayLimit] = useState<number>(100);
 
   // Extract dynamic distinct providers
   const distinctProviders = useMemo(() => {
@@ -161,23 +162,24 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
       // 5. Team Verdict & Functionality Filter
       if (verdictFilter !== 'all') {
-        if (verdictFilter === 'optimal' && !run.metrics.teamFunctionality.includes('Optimal') && run.metrics.teamFunctionality !== 'optimal') return false;
-        if (verdictFilter === 'deliberating' && !run.metrics.teamFunctionality.includes('Deliberating') && run.metrics.teamFunctionality !== 'deliberating') return false;
-        if (verdictFilter === 'high_burn' && !run.metrics.teamFunctionality.includes('Burn') && !run.metrics.teamFunctionality.includes('High')) return false;
-        if (verdictFilter === 'non_functional' && !run.metrics.teamFunctionality.includes('Non-Functional') && !run.metrics.teamFunctionality.includes('Loop') && !run.metrics.teamFunctionality.includes('Wrong')) return false;
+        const teamFunc = run.metrics?.teamFunctionality || '';
+        if (verdictFilter === 'optimal' && !teamFunc.includes('Optimal') && teamFunc !== 'optimal') return false;
+        if (verdictFilter === 'deliberating' && !teamFunc.includes('Deliberating') && teamFunc !== 'deliberating') return false;
+        if (verdictFilter === 'high_burn' && !teamFunc.includes('Burn') && !teamFunc.includes('High')) return false;
+        if (verdictFilter === 'non_functional' && !teamFunc.includes('Non-Functional') && !teamFunc.includes('Loop') && !teamFunc.includes('Wrong')) return false;
       }
 
       // 6. Accuracy & Correctness Filter
       if (accuracyFilter !== 'all') {
-        if (accuracyFilter === 'correct' && !run.metrics.isCorrect) return false;
-        if (accuracyFilter === 'incorrect' && run.metrics.isCorrect) return false;
+        if (accuracyFilter === 'correct' && !run.metrics?.isCorrect) return false;
+        if (accuracyFilter === 'incorrect' && run.metrics?.isCorrect) return false;
         if (accuracyFilter === 'consensus' && run.consensusStatus !== 'consensus_reached') return false;
         if (accuracyFilter === 'no_consensus' && run.consensusStatus === 'consensus_reached') return false;
       }
 
       // 7. Cost Filter
       if (costFilter !== 'all') {
-        const cost = run.metrics.totalCostUsd || 0;
+        const cost = run.metrics?.totalCostUsd || 0;
         if (costFilter === 'ultra_low' && cost >= 0.002) return false;
         if (costFilter === 'medium' && (cost < 0.002 || cost > 0.01)) return false;
         if (costFilter === 'high' && cost <= 0.01) return false;
@@ -185,7 +187,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
       // 8. Turns Filter
       if (turnsFilter !== 'all') {
-        const count = run.metrics.turnsCount;
+        const count = run.metrics?.turnsCount ?? 0;
         if (turnsFilter === 'fast' && count > 2) return false;
         if (turnsFilter === 'moderate' && (count < 3 || count > 5)) return false;
         if (turnsFilter === 'long' && count < 6) return false;
@@ -193,7 +195,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
       // 9. Efficiency Tier Filter
       if (tierFilter !== 'all') {
-        const eff = run.metrics.efficiencyIndex || 0;
+        const eff = run.metrics?.efficiencyIndex || 0;
         if (tierFilter === 'tier_s' && eff < 15) return false;
         if (tierFilter === 'tier_a' && (eff < 5 || eff >= 15)) return false;
         if (tierFilter === 'tier_b' && (eff < 1 || eff >= 5)) return false;
@@ -228,31 +230,36 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       let comparison = 0;
       switch (sortBy) {
         case 'efficiency':
-          comparison = (b.metrics.efficiencyIndex || 0) - (a.metrics.efficiencyIndex || 0);
+          comparison = (b.metrics?.efficiencyIndex ?? 0) - (a.metrics?.efficiencyIndex ?? 0);
           break;
         case 'cost':
-          comparison = (a.metrics.totalCostUsd || 0) - (b.metrics.totalCostUsd || 0);
+          comparison = (a.metrics?.totalCostUsd ?? 0) - (b.metrics?.totalCostUsd ?? 0);
           break;
         case 'tokens':
-          comparison = a.metrics.totalTokens - b.metrics.totalTokens;
+          comparison = (a.metrics?.totalTokens ?? 0) - (b.metrics?.totalTokens ?? 0);
           break;
         case 'latency':
-          comparison = a.metrics.totalWallClockMs - b.metrics.totalWallClockMs;
+          comparison = (a.metrics?.totalWallClockMs ?? 0) - (b.metrics?.totalWallClockMs ?? 0);
           break;
         case 'accuracy':
-          comparison = b.metrics.accuracyScore - a.metrics.accuracyScore;
+          comparison = (b.metrics?.accuracyScore ?? 0) - (a.metrics?.accuracyScore ?? 0);
           break;
         case 'turns':
-          comparison = a.metrics.turnsCount - b.metrics.turnsCount;
+          comparison = (a.metrics?.turnsCount ?? 0) - (b.metrics?.turnsCount ?? 0);
           break;
         case 'date':
         default:
-          comparison = new Date(b.date).getTime() - new Date(a.date).getTime();
+          comparison = new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
           break;
       }
       return sortOrder === 'asc' ? -comparison : comparison;
     });
   }, [filteredRuns, sortBy, sortOrder]);
+
+  // Paginated/Limited Slice for Smooth UI Rendering
+  const displayedRuns = useMemo(() => {
+    return sortedRuns.slice(0, displayLimit);
+  }, [sortedRuns, displayLimit]);
 
   const handleSortToggle = (column: typeof sortBy) => {
     if (sortBy === column) {
@@ -266,16 +273,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   // Live Aggregates on the Filtered Dataset
   const totalFilteredRuns = filteredRuns.length;
   const avgEfficiency = totalFilteredRuns > 0
-    ? (filteredRuns.reduce((acc, r) => acc + (r.metrics.efficiencyIndex || 0), 0) / totalFilteredRuns).toFixed(1)
+    ? (filteredRuns.reduce((acc, r) => acc + (typeof r.metrics?.efficiencyIndex || 0), 0) / totalFilteredRuns).toFixed(1)
     : '0';
-  const solvedCount = filteredRuns.filter((r) => r.metrics.isCorrect).length;
+  const solvedCount = filteredRuns.filter((r) => Boolean(r.metrics?.isCorrect)).length;
   const accuracyRate = totalFilteredRuns > 0 ? Math.round((solvedCount / totalFilteredRuns) * 100) : 0;
-  const totalInferenceCost = filteredRuns.reduce((acc, r) => acc + (r.metrics.totalCostUsd || 0), 0);
+  const totalInferenceCost = filteredRuns.reduce((acc, r) => acc + (r.metrics?.totalCostUsd || 0), 0);
   const avgLatencySec = totalFilteredRuns > 0
-    ? (filteredRuns.reduce((acc, r) => acc + r.metrics.totalWallClockMs, 0) / totalFilteredRuns / 1000).toFixed(1)
+    ? (filteredRuns.reduce((acc, r) => acc + (r.metrics?.totalWallClockMs || 0), 0) / totalFilteredRuns / 1000).toFixed(1)
     : '0';
 
-  // Export handlers
+  // Export handlers (Always exports ALL filtered/sorted runs without display caps)
   const exportJSON = () => {
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(sortedRuns, null, 2));
     const downloadAnchor = document.createElement('a');
@@ -313,22 +320,22 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       const bInfo = getAgentMakeAndModel(r.agentBConfig);
       return [
         r.id,
-        `"${r.problemTitle.replace(/"/g, '""')}"`,
+        `"${(r.problemTitle || '').replace(/"/g, '""')}"`,
         `"${suiteDef.shortLabel}"`,
-        r.topic,
-        r.difficulty,
+        r.topic || '',
+        r.difficulty || '',
         `"${aInfo.fullDisplayName}"`,
         `"${bInfo.fullDisplayName}"`,
-        r.consensusStatus,
-        r.metrics.isCorrect ? 'TRUE' : 'FALSE',
-        r.metrics.accuracyScore,
-        r.metrics.totalTokens,
-        r.metrics.totalCostUsd.toFixed(6),
-        (r.metrics.totalWallClockMs / 1000).toFixed(2),
-        r.metrics.turnsCount,
-        r.metrics.efficiencyIndex.toFixed(2),
+        r.consensusStatus || '',
+        r.metrics?.isCorrect ? 'TRUE' : 'FALSE',
+        r.metrics?.accuracyScore ?? 0,
+        r.metrics?.totalTokens ?? 0,
+        (r.metrics?.totalCostUsd ?? 0).toFixed(6),
+        ((r.metrics?.totalWallClockMs ?? 0) / 1000).toFixed(2),
+        r.metrics?.turnsCount ?? 0,
+        (r.metrics?.efficiencyIndex ?? 0).toFixed(2),
         `"${(r.finalAgreedAnswer || '').replace(/"/g, '""')}"`,
-        r.date,
+        r.date || '',
       ].join(',');
     });
 
@@ -361,6 +368,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         </div>
         <div className="flex items-center gap-3 text-[11px] font-mono text-indigo-600 dark:text-indigo-400">
           <span>{runs.length} total synced runs</span>
+          <span className="text-slate-300 dark:text-slate-700">•</span>
+          <span>Showing top {Math.min(displayLimit, sortedRuns.length)} of {sortedRuns.length}</span>
           <span className="text-slate-300 dark:text-slate-700">•</span>
           <span>Firestore Real-Time</span>
         </div>
@@ -569,19 +578,19 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 onClick={exportCSV}
                 disabled={sortedRuns.length === 0}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
-                title="Export filtered runs as CSV"
+                title={`Export all ${sortedRuns.length} filtered runs as CSV`}
               >
                 <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                <span className="hidden sm:inline">CSV</span>
+                <span className="hidden sm:inline">CSV ({sortedRuns.length})</span>
               </button>
               <button
                 onClick={exportJSON}
                 disabled={sortedRuns.length === 0}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
-                title="Export filtered runs as JSON"
+                title={`Export all ${sortedRuns.length} filtered runs as JSON`}
               >
                 <Download className="h-3.5 w-3.5 text-indigo-600" />
-                <span className="hidden sm:inline">JSON</span>
+                <span className="hidden sm:inline">JSON ({sortedRuns.length})</span>
               </button>
             </div>
           </div>
@@ -991,15 +1000,32 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               </thead>
 
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {sortedRuns.map((run, idx) => {
+                {displayedRuns.map((run, idx) => {
                   const challenge = getChallengeTypeForRun(run);
-                  const tier = getTierBadge(run.metrics.efficiencyIndex, run.metrics.isCorrect);
+                  const effIndex = typeof run.metrics?.efficiencyIndex === 'number' && !isNaN(run.metrics.efficiencyIndex)
+                    ? run.metrics.efficiencyIndex
+                    : 0;
+                  const isCorrect = Boolean(run.metrics?.isCorrect);
+                  const consensusReached = Boolean(run.metrics?.consensusReached);
+                  const tier = getTierBadge(effIndex, isCorrect);
                   const teamBadge = getTeamFunctionalityBadge(
-                    run.metrics.teamFunctionality,
-                    run.metrics.consensusReached,
-                    run.metrics.isCorrect
+                    run.metrics?.teamFunctionality,
+                    consensusReached,
+                    isCorrect
                   );
-                  const wallClockSec = (run.metrics.totalWallClockMs / 1000).toFixed(2);
+                  const wallClockMs = typeof run.metrics?.totalWallClockMs === 'number' && !isNaN(run.metrics.totalWallClockMs)
+                    ? run.metrics.totalWallClockMs
+                    : 0;
+                  const wallClockSec = (wallClockMs / 1000).toFixed(2);
+                  const totalCostUsd = typeof run.metrics?.totalCostUsd === 'number' && !isNaN(run.metrics.totalCostUsd)
+                    ? run.metrics.totalCostUsd
+                    : 0;
+                  const costPerTurn = typeof run.metrics?.costPerTurnUsd === 'number' && !isNaN(run.metrics.costPerTurnUsd)
+                    ? run.metrics.costPerTurnUsd
+                    : totalCostUsd / Math.max(1, run.metrics?.turnsCount ?? 1);
+                  const turnsCount = run.metrics?.turnsCount ?? 0;
+                  const totalTokens = run.metrics?.totalTokens ?? 0;
+                  const accuracyScore = run.metrics?.accuracyScore ?? 0;
                   const aInfo = getAgentMakeAndModel(run.agentAConfig);
                   const bInfo = getAgentMakeAndModel(run.agentBConfig);
 
@@ -1152,7 +1178,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       {/* Efficiency Index */}
                       <td className="px-4 py-3.5 text-right">
                         <div className="font-mono font-bold text-sm text-indigo-600 dark:text-indigo-400">
-                          {run.metrics.efficiencyIndex.toFixed(1)}
+                          {efficiencyIndex.toFixed(1)}
                         </div>
                         <span className={`text-[10px] font-bold ${tier.color}`}>
                           {tier.label.split(' ')[0]} Tier
@@ -1207,7 +1233,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     <span>•</span>
                     <span>Cost: {formatCurrency(inspectModalRun.metrics.totalCostUsd)}</span>
                     <span>•</span>
-                    <span>Efficiency: {inspectModalRun.metrics.efficiencyIndex.toFixed(1)} pts</span>
+                    <span>Efficiency: {(inspectModalRun.metrics?.efficiencyIndex ?? 0).toFixed(1)} pts</span>
                   </p>
                 </div>
 
