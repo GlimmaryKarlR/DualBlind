@@ -13,7 +13,14 @@ import {
   ProviderApiKeys,
 } from './types/benchmark';
 import { getStoredApiKeys, countConfiguredKeys } from './utils/tokenStorage';
-import { getStoredRuns, saveRunUniversal, subscribeUniversalLeaderboard, fetchUniversalLeaderboard, normalizeRunRecord } from './utils/runStorage';
+import {
+  getStoredRuns,
+  saveRunUniversal,
+  subscribeUniversalLeaderboard,
+  fetchUniversalLeaderboard,
+  syncLocalRunsToServer,
+  normalizeRunRecord,
+} from './utils/runStorage';
 import { generateBenchmarkTurnHybrid } from './utils/hybridTurnGenerator';
 import { computeVerificationClient } from './utils/verification';
 import { extractFinalAnswer } from './utils/clientInference';
@@ -143,52 +150,27 @@ export default function App() {
   const metricsRef = useRef(metrics);
   metricsRef.current = metrics;
 
-  // Load & Subscribe to Universal Leaderboard in Real Time
+  // Load & Subscribe to Universal Leaderboard (Server-cached, 0 Firestore reads)
   useEffect(() => {
-    // 1. Eagerly fetch all runs directly from Firestore via atomic getDocs
-    fetchUniversalLeaderboard().then((runs) => {
+    // 1. Initial immediate local render
+    const cached = getStoredRuns();
+    if (cached.length > 0) {
+      setRunsHistory(cached);
+    }
+
+    // 2. Fetch server-cached leaderboard and sync any local client runs to server
+    syncLocalRunsToServer().then((runs) => {
       if (Array.isArray(runs) && runs.length > 0) {
         setRunsHistory(runs);
       }
     });
 
-    // 2. Set up real-time listener to Firestore for new incoming runs
+    // 3. Lightweight poll subscription (0 Firestore reads)
     const unsubscribe = subscribeUniversalLeaderboard((runs) => {
       if (Array.isArray(runs) && runs.length > 0) {
         setRunsHistory(runs);
       }
     });
-
-    // 3. Fetch backup from local backend endpoint if available (non-Vercel environments)
-    fetch('/api/leaderboard/runs')
-      .then((res) => {
-        const contentType = res.headers.get('content-type');
-        if (!res.ok || !contentType || !contentType.includes('application/json')) return null;
-        return res.json();
-      })
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setRunsHistory((prev) => {
-            const map = new Map<string, BenchmarkRunRecord>();
-            prev.forEach((item) => {
-              const norm = normalizeRunRecord(item);
-              if (norm) map.set(norm.id, norm);
-            });
-            data.forEach((item) => {
-              const norm = normalizeRunRecord(item);
-              if (norm && !map.has(norm.id)) map.set(norm.id, norm);
-            });
-            return Array.from(map.values()).sort((a, b) => {
-              const timeA = a.date ? new Date(a.date).getTime() : 0;
-              const timeB = b.date ? new Date(b.date).getTime() : 0;
-              return timeB - timeA;
-            });
-          });
-        }
-      })
-      .catch(() => {
-        // Safe fallback
-      });
 
     return () => {
       if (unsubscribe) unsubscribe();

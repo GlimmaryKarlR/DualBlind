@@ -185,7 +185,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         if (costFilter === 'high' && cost <= 0.01) return false;
       }
 
-      // 8. Turns Filter
+      // 8. Dialogue Turns Filter
       if (turnsFilter !== 'all') {
         const count = run.metrics?.turnsCount ?? 0;
         if (turnsFilter === 'fast' && count > 2) return false;
