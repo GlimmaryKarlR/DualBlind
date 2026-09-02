@@ -7,8 +7,6 @@ import {
   setDoc,
   getDocs,
   onSnapshot,
-  query,
-  limit,
   Unsubscribe,
 } from 'firebase/firestore';
 
@@ -18,45 +16,48 @@ const FIRESTORE_COLLECTION = 'benchmark_runs';
 export const SEED_RUNS: BenchmarkRunRecord[] = HISTORICAL_BENCHMARK_RUNS;
 
 /**
- * Merge and deduplicate runs by ID, sorting by newest date first.
+ * Merge and deduplicate runs by ID, sorting by newest date first without artificial caps.
  */
 export function mergeAndDeduplicateRuns(
   primary: BenchmarkRunRecord[],
-  fallback: BenchmarkRunRecord[]
+  fallback: BenchmarkRunRecord[] = []
 ): BenchmarkRunRecord[] {
   const map = new Map<string, BenchmarkRunRecord>();
-  // Fallbacks first (e.g. historical baseline)
+  // Fallbacks first (e.g. local cache)
   for (const item of fallback) {
-    if (item && item.id) map.set(item.id, item);
+    if (item && item.id && item.problemTitle && item.metrics) map.set(item.id, item);
   }
   // Primary overwrite (cloud runs or newest local runs)
   for (const item of primary) {
-    if (item && item.id) map.set(item.id, item);
+    if (item && item.id && item.problemTitle && item.metrics) map.set(item.id, item);
   }
 
   const list = Array.from(map.values());
-  return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 500);
+  return list.sort((a, b) => {
+    const timeA = a.date ? new Date(a.date).getTime() : 0;
+    const timeB = b.date ? new Date(b.date).getTime() : 0;
+    return timeB - timeA;
+  });
 }
 
 /**
  * Get runs cached locally in browser
  */
 export function getStoredRuns(): BenchmarkRunRecord[] {
-  if (typeof window === 'undefined') return SEED_RUNS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_RUNS));
-      return SEED_RUNS;
+      return [];
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return mergeAndDeduplicateRuns(parsed, SEED_RUNS);
+      return mergeAndDeduplicateRuns(parsed, []);
     }
-    return SEED_RUNS;
+    return [];
   } catch (e) {
-    console.warn('Failed to load runs from localStorage, returning baseline runs:', e);
-    return SEED_RUNS;
+    console.warn('Failed to load runs from localStorage:', e);
+    return [];
   }
 }
 
@@ -134,7 +135,7 @@ export function saveRunToStorage(record: BenchmarkRunRecord): BenchmarkRunRecord
 }
 
 /**
- * Fetch all universal runs directly from Firestore
+ * Fetch all universal runs directly from Firestore without artificial limits
  */
 export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]> {
   const db = getFirestoreDb();
@@ -142,25 +143,27 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
 
   try {
     const runsRef = collection(db, FIRESTORE_COLLECTION);
-    const q = query(runsRef, limit(300));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(runsRef);
 
     if (snapshot.empty) {
-      // Seed Firestore with all historical runs
-      uploadRunsToCloud(SEED_RUNS).catch(() => {});
       return getStoredRuns();
     }
 
     const cloudRuns: BenchmarkRunRecord[] = [];
     snapshot.forEach((docSnap) => {
       const data = docSnap.data() as BenchmarkRunRecord;
-      if (data && data.id && data.problemTitle) {
+      if (data && data.id && data.problemTitle && data.metrics) {
         cloudRuns.push(data);
       }
     });
 
-    const merged = mergeAndDeduplicateRuns(cloudRuns, SEED_RUNS);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    const localCached = getStoredRuns();
+    const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    } catch (e) {
+      console.warn('LocalStorage cache write error:', e);
+    }
     return merged;
   } catch (error) {
     console.warn('[Universal Leaderboard] Fetch from cloud failed, using local cache:', error);
@@ -182,38 +185,25 @@ export function subscribeUniversalLeaderboard(
 
   try {
     const runsRef = collection(db, FIRESTORE_COLLECTION);
-    const q = query(runsRef, limit(300));
 
     const unsubscribe = onSnapshot(
-      q,
+      runsRef,
       (snapshot) => {
-        if (snapshot.empty) {
-          uploadRunsToCloud(SEED_RUNS).catch(() => {});
-          onUpdate(getStoredRuns());
-          return;
-        }
-
         const cloudRuns: BenchmarkRunRecord[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as BenchmarkRunRecord;
-          if (data && data.id && data.problemTitle) {
+          if (data && data.id && data.problemTitle && data.metrics) {
             cloudRuns.push(data);
           }
         });
 
-        // If cloud is missing any historical benchmark runs, backfill them
-        if (cloudRuns.length < SEED_RUNS.length) {
-          const cloudIds = new Set(cloudRuns.map((r) => r.id));
-          const missing = SEED_RUNS.filter((r) => !cloudIds.has(r.id));
-          if (missing.length > 0) {
-            uploadRunsToCloud(missing).catch(() => {});
-          }
-        }
-
-        const merged = mergeAndDeduplicateRuns(cloudRuns, SEED_RUNS);
+        const localCached = getStoredRuns();
+        const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        } catch {}
+        } catch (e) {
+          console.warn('LocalStorage cache write error:', e);
+        }
         onUpdate(merged);
       },
       (error) => {
