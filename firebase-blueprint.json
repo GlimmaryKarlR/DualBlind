@@ -1,0 +1,38 @@
+{
+  "entities": {
+    "BenchmarkRun": {
+      "title": "BenchmarkRun",
+      "description": "A collaborative multi-agent benchmark run record and telemetry metrics",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the benchmark run"
+        },
+        "problemTitle": {
+          "type": "string",
+          "description": "Title of the benchmark problem evaluated"
+        },
+        "agentAConfig": {
+          "type": "object",
+          "description": "Configuration metadata for Agent A"
+        },
+        "agentBConfig": {
+          "type": "object",
+          "description": "Configuration metadata for Agent B"
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Computed latency, tokens, cost, and efficiency index"
+        }
+      },
+      "required": ["id", "problemTitle", "agentAConfig", "agentBConfig", "metrics"]
+    }
+  },
+  "firestore": {
+    "/benchmark_runs/{runId}": {
+      "schema": "BenchmarkRun",
+      "description": "Collection of universal benchmark runs submitted across sessions"
+    }
+  }
+}
