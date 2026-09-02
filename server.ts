@@ -3,6 +3,13 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import {
+  getAllRuns,
+  saveRun,
+  batchSync,
+  syncFromFirestore,
+  getSyncStatus,
+} from './server/leaderboardCache';
 
 dotenv.config();
 
@@ -1027,42 +1034,13 @@ app.post('/api/benchmark/verify', (req, res) => {
   }
 });
 
-// Save a benchmark run into the records store
+// Save a benchmark run into the records store and persistent cache
 app.post('/api/benchmark/save-run', (req, res) => {
   try {
-    const record: SavedRunRecord = {
-      id: req.body.id || `run-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      problemId: req.body.problemId,
-      problemTitle: req.body.problemTitle,
-      topic: req.body.topic,
-      difficulty: req.body.difficulty,
-      date: req.body.date || new Date().toISOString(),
-      agentAConfig: req.body.agentAConfig,
-      agentBConfig: req.body.agentBConfig,
-      isUncapped: req.body.isUncapped ?? true,
-      turnsCount: req.body.turnsCount,
-      totalTokens: req.body.totalTokens,
-      totalInputTokens: req.body.totalInputTokens,
-      totalOutputTokens: req.body.totalOutputTokens,
-      totalCostUsd: req.body.totalCostUsd || calculateInferenceCost(req.body.totalTokens * 0.6, req.body.totalTokens * 0.4),
-      totalWallClockMs: req.body.totalWallClockMs,
-      tokensPerSec: req.body.tokensPerSec,
-      consensusReached: req.body.consensusReached,
-      finalAgreedAnswer: req.body.finalAgreedAnswer,
-      accuracyScore: req.body.accuracyScore,
-      isCorrect: req.body.isCorrect,
-      efficiencyIndex: req.body.efficiencyIndex,
-      teamFunctionality: req.body.teamFunctionality,
-      consensusStatus: req.body.consensusStatus,
-      turnsSummary: req.body.turnsSummary || [],
-    };
-
-    savedBenchmarkRuns.unshift(record);
-    if (savedBenchmarkRuns.length > 150) {
-      savedBenchmarkRuns.pop();
-    }
-
-    res.json({ success: true, savedRecord: record });
+    const record = req.body;
+    const saved = saveRun(record);
+    const all = getAllRuns();
+    res.json({ success: true, savedRecord: saved, totalCached: all.length });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to save benchmark run' });
   }
@@ -1072,27 +1050,52 @@ app.post('/api/benchmark/save-run', (req, res) => {
 app.post('/api/leaderboard/save-run', (req, res) => {
   try {
     const record = req.body;
-    savedBenchmarkRuns.unshift(record);
-    if (savedBenchmarkRuns.length > 150) {
-      savedBenchmarkRuns.pop();
-    }
-    res.json({ success: true, savedRecord: record });
+    const saved = saveRun(record);
+    const all = getAllRuns();
+    res.json({ success: true, savedRecord: saved, totalCached: all.length });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to save benchmark run' });
   }
 });
 
-// Get leaderboard and run statistics
+// Batch sync endpoint: client sends local runs, server merges with persistent cache
+app.post('/api/leaderboard/sync-batch', (req, res) => {
+  try {
+    const incoming = req.body?.runs || [];
+    const merged = batchSync(incoming);
+    res.json({ success: true, runs: merged, totalCached: merged.length });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to sync batch' });
+  }
+});
+
+// Get leaderboard and run statistics (served from memory with 0 Firestore reads)
 app.get('/api/benchmark/leaderboard', (req, res) => {
+  const runs = getAllRuns();
   res.json({
-    runs: savedBenchmarkRuns,
-    totalRuns: savedBenchmarkRuns.length,
+    runs,
+    totalRuns: runs.length,
   });
 });
 
-// Alias for get runs
+// Alias for get runs (0 Firestore reads)
 app.get('/api/leaderboard/runs', (req, res) => {
-  res.json(savedBenchmarkRuns);
+  res.json(getAllRuns());
+});
+
+// Leaderboard sync status
+app.get('/api/leaderboard/status', (req, res) => {
+  res.json(getSyncStatus());
+});
+
+// Trigger a refresh from Firestore in background
+app.post('/api/leaderboard/refresh', async (req, res) => {
+  try {
+    const count = await syncFromFirestore(true);
+    res.json({ success: true, totalRuns: count, status: getSyncStatus() });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Sync failed' });
+  }
 });
 
 // -------------------------------------------------------------

@@ -142,7 +142,7 @@ function sanitizeForFirestore<T>(data: T): T {
 }
 
 /**
- * Save run record universally (to Firestore Cloud Database + local storage)
+ * Save run record universally (to Server in-memory/disk cache, local storage, and Firestore)
  */
 export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<BenchmarkRunRecord[]> {
   const normalized = normalizeRunRecord(record) || record;
@@ -154,7 +154,7 @@ export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<Benc
     updatedLocal = mergeAndDeduplicateRuns([normalized], current);
     try {
       // Store lightweight cache without transcripts to prevent QuotaExceededError
-      const lightCache = updatedLocal.slice(0, 300).map((r) => {
+      const lightCache = updatedLocal.slice(0, 2500).map((r) => {
         const { turns, ...rest } = r;
         return { ...rest, turns: [] };
       });
@@ -166,7 +166,18 @@ export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<Benc
     console.warn('Local storage cache update failed:', e);
   }
 
-  // 2. Persist to Firestore Universal Database
+  // 2. Persist to Backend Server In-Memory Cache & Disk (0 Firestore reads)
+  try {
+    fetch('/api/leaderboard/save-run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalized),
+    }).catch(() => {});
+  } catch {
+    // Non-blocking
+  }
+
+  // 3. Background persist to Firestore Universal Database (Uses Write quota, not Read quota)
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -177,8 +188,8 @@ export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<Benc
       const docRef = doc(db, FIRESTORE_COLLECTION, normalized.id);
       await setDoc(docRef, sanitizedRecord, { merge: true });
       console.info(`[Universal Leaderboard] Benchmark run ${normalized.id} synced to Firestore.`);
-    } catch (firestoreErr) {
-      console.error('[Universal Leaderboard] Cloud sync error:', firestoreErr);
+    } catch (firestoreErr: any) {
+      console.warn('[Universal Leaderboard] Cloud sync write notice:', firestoreErr?.message || firestoreErr);
     }
   }
 
@@ -214,24 +225,104 @@ export async function uploadRunsToCloud(runs: BenchmarkRunRecord[]): Promise<voi
  */
 export function saveRunToStorage(record: BenchmarkRunRecord): BenchmarkRunRecord[] {
   saveRunUniversal(record).catch((err) => {
-    console.error('Async Firestore sync error in saveRunToStorage:', err);
+    console.error('Async sync error in saveRunToStorage:', err);
   });
   return getStoredRuns();
 }
 
 /**
- * Fetch all universal runs directly from Firestore without artificial limits
+ * Sync local client runs to the server persistent cache
+ */
+export async function syncLocalRunsToServer(): Promise<BenchmarkRunRecord[]> {
+  const localRuns = getStoredRuns();
+  try {
+    const res = await fetch('/api/leaderboard/sync-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ runs: localRuns }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.runs) && data.runs.length > 0) {
+        const normalizedList: BenchmarkRunRecord[] = [];
+        for (const item of data.runs) {
+          const norm = normalizeRunRecord(item);
+          if (norm) normalizedList.push(norm);
+        }
+        // Update local cache
+        try {
+          const lightCache = normalizedList.slice(0, 2500).map((r) => {
+            const { turns, ...rest } = r;
+            return { ...rest, turns: [] };
+          });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
+        } catch {
+          // Ignore
+        }
+        return normalizedList;
+      }
+    }
+  } catch (err) {
+    console.warn('[Leaderboard] Local batch sync to server notice:', err);
+  }
+
+  return localRuns;
+}
+
+/**
+ * Fetch all universal runs using server in-memory cache first (0 Firestore read quota consumed)
  */
 export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]> {
+  // 1. Primary: Server-side in-memory cache (Instant, 0 Firestore reads)
+  try {
+    const res = await fetch('/api/leaderboard/runs');
+    if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const cloudRuns: BenchmarkRunRecord[] = [];
+          for (const item of data) {
+            const normalized = normalizeRunRecord(item);
+            if (normalized) {
+              cloudRuns.push(normalized);
+            }
+          }
+          const localCached = getStoredRuns();
+          const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
+          try {
+            const lightCache = merged.slice(0, 2500).map((r) => {
+              const { turns, ...rest } = r;
+              return { ...rest, turns: [] };
+            });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
+          } catch {
+            // Quota safe - ignore
+          }
+          return merged;
+        }
+      }
+    }
+  } catch {
+    // Network or server starting
+  }
+
+  // 2. Fallback: Local browser storage
+  const localCached = getStoredRuns();
+  if (localCached.length > 0) {
+    return localCached;
+  }
+
+  // 3. Direct Firestore fetch (only used if server is unavailable)
   const db = getFirestoreDb();
-  if (!db) return getStoredRuns();
+  if (!db) return [];
 
   try {
     const runsRef = collection(db, FIRESTORE_COLLECTION);
     const snapshot = await getDocs(runsRef);
 
     if (snapshot.empty) {
-      return getStoredRuns();
+      return [];
     }
 
     const cloudRuns: BenchmarkRunRecord[] = [];
@@ -242,75 +333,58 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
       }
     });
 
-    const localCached = getStoredRuns();
-    const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
-    try {
-      const lightCache = merged.slice(0, 300).map((r) => {
-        const { turns, ...rest } = r;
-        return { ...rest, turns: [] };
-      });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
-    } catch {
-      // Quota safe - ignore
-    }
-    return merged;
-  } catch (error) {
-    console.warn('[Universal Leaderboard] Fetch from cloud failed, trying local cache:', error);
+    return mergeAndDeduplicateRuns(cloudRuns, []);
+  } catch (error: any) {
+    console.warn('[Universal Leaderboard] Cloud direct fetch notice:', error?.message || error);
     return getStoredRuns();
   }
 }
 
 /**
- * Subscribe to real-time Universal Leaderboard updates across all users
+ * Subscribe to real-time Universal Leaderboard updates via high-frequency server cache polling
+ * (Consumes 0 Firestore read units, avoiding daily quota exhaustion)
  */
 export function subscribeUniversalLeaderboard(
   onUpdate: (runs: BenchmarkRunRecord[]) => void
 ): Unsubscribe | null {
-  // First, eagerly fetch all documents via atomic getDocs so the complete dataset is loaded immediately
+  // First, eagerly fetch from server cache
   fetchUniversalLeaderboard()
     .then((allRuns) => {
       if (Array.isArray(allRuns) && allRuns.length > 0) {
         onUpdate(allRuns);
       }
     })
-    .catch(() => {
-      // Handled by fetchUniversalLeaderboard
-    });
+    .catch(() => {});
 
-  const db = getFirestoreDb();
-  if (!db) {
-    return null;
-  }
-
-  try {
-    const runsRef = collection(db, FIRESTORE_COLLECTION);
-
-    const unsubscribe = onSnapshot(
-      runsRef,
-      (snapshot) => {
-        const cloudRuns: BenchmarkRunRecord[] = [];
-        snapshot.forEach((docSnap) => {
-          const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
-          if (normalized) {
-            cloudRuns.push(normalized);
-          }
-        });
-
-        if (cloudRuns.length > 0) {
-          const localCached = getStoredRuns();
-          const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
-          onUpdate(merged);
+  // Poll server cache every 25 seconds for new runs across all users (0 Firestore reads)
+  const interval = setInterval(() => {
+    fetchUniversalLeaderboard()
+      .then((runs) => {
+        if (Array.isArray(runs) && runs.length > 0) {
+          onUpdate(runs);
         }
-      },
-      (error) => {
-        // When WebChannel has a transient reconnect or disconnect notice, DO NOT wipe existing state!
-        console.warn('[Universal Leaderboard] Realtime listener notice (retaining existing data):', error);
-      }
-    );
+      })
+      .catch(() => {});
+  }, 25000);
 
-    return unsubscribe;
-  } catch (err) {
-    console.warn('[Universal Leaderboard] Subscription setup notice:', err);
-    return null;
+  const handleFocus = () => {
+    fetchUniversalLeaderboard()
+      .then((runs) => {
+        if (Array.isArray(runs) && runs.length > 0) {
+          onUpdate(runs);
+        }
+      })
+      .catch(() => {});
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', handleFocus);
   }
+
+  return () => {
+    clearInterval(interval);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', handleFocus);
+    }
+  };
 }
