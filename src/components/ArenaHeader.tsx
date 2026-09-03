@@ -78,7 +78,7 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
-              <span>MMLU / GPQA</span>
+              <span>GPQA / HLE / MMLU</span>
             </button>
             <button
               onClick={() => onSelectTopic('coding')}
@@ -100,7 +100,7 @@ export const ArenaHeader: React.FC<ArenaHeaderProps> = ({
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
-              <span>MATH / AIME</span>
+              <span>FrontierMath / AIME</span>
             </button>
             <button
               onClick={() => onSelectTopic('logic')}

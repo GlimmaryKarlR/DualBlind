@@ -1,10 +1,10 @@
 import React from 'react';
-import { Bot, Trophy, Layers, BookOpen, Activity, Key } from 'lucide-react';
+import { Bot, Trophy, Layers, BookOpen, Activity, Key, BrainCircuit } from 'lucide-react';
 import { TopicCategory } from '../types/benchmark';
 
 interface NavbarProps {
-  currentTab: 'arena' | 'leaderboard' | 'problems' | 'methodology';
-  onSelectTab: (tab: 'arena' | 'leaderboard' | 'problems' | 'methodology') => void;
+  currentTab: 'arena' | 'leaderboard' | 'problems' | 'datasets' | 'methodology';
+  onSelectTab: (tab: 'arena' | 'leaderboard' | 'problems' | 'datasets' | 'methodology') => void;
   onRandomChallenge?: (topic?: TopicCategory) => void;
   isRunning: boolean;
   onOpenTokens?: () => void;
@@ -84,6 +84,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           <button
+            id="nav-datasets-btn"
+            onClick={() => onSelectTab('datasets')}
+            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              currentTab === 'datasets'
+                ? 'bg-white text-indigo-600 shadow-xs dark:bg-slate-700 dark:text-indigo-300'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+            }`}
+          >
+            <BrainCircuit className="h-3.5 w-3.5 text-indigo-500" />
+            <span>Training</span>
+          </button>
+
+          <button
             id="nav-methodology-btn"
             onClick={() => onSelectTab('methodology')}
             className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold tracking-wide transition-all cursor-pointer ${
@@ -140,6 +153,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`px-2.5 py-1 rounded-md font-semibold tracking-wide whitespace-nowrap ${currentTab === 'problems' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
         >
           Problems
+        </button>
+        <button
+          onClick={() => onSelectTab('datasets')}
+          className={`px-2.5 py-1 rounded-md font-semibold tracking-wide whitespace-nowrap ${currentTab === 'datasets' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+        >
+          Training
         </button>
         <button
           onClick={() => onSelectTab('methodology')}

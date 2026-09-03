@@ -28,7 +28,7 @@ export const BENCHMARK_SUITES_META: BenchmarkSuiteMeta[] = [
     id: 'gpqa_diamond',
     name: 'GPQA Diamond (Google-Proof PhD-Level Science)',
     shortName: 'GPQA Diamond',
-    sourceCitation: 'David Rein et al. / NYU & Anthropic Research',
+    sourceCitation: 'David Rein et al. / NYU & Anthropic (github.com/idavidrein/gpqa)',
     standardOrg: 'Frontier AI Frontier Science Standard',
     description: '448 PhD-level chemistry, physics, and biology questions crafted by domain experts that are resistant to casual search engine retrieval and require deep domain synthesis.',
     iconName: 'Atom',
@@ -39,7 +39,7 @@ export const BENCHMARK_SUITES_META: BenchmarkSuiteMeta[] = [
     id: 'swe_bench',
     name: 'SWE-bench & Systems Engineering',
     shortName: 'SWE-bench',
-    sourceCitation: 'Princeton NLP / Carlos E. Jimenez et al.',
+    sourceCitation: 'Princeton NLP / Carlos E. Jimenez et al. (github.com/princeton-nlp/SWE-bench)',
     standardOrg: 'Industry Standard for Agentic Software Engineering',
     description: 'Complex software engineering problems, concurrency invariants, memory leaks, distributed consensus, and algorithmic bug triage.',
     iconName: 'Code',
@@ -100,6 +100,28 @@ export const BENCHMARK_SUITES_META: BenchmarkSuiteMeta[] = [
     iconName: 'Brain',
     badgeColor: 'violet',
     topic: 'logic',
+  },
+  {
+    id: 'hle',
+    name: "Humanity's Last Exam (HLE - PhD Frontier)",
+    shortName: 'HLE',
+    sourceCitation: 'Center for AI Safety & Scale AI / Dan Hendrycks et al. (github.com/centerforaisafety/hle)',
+    standardOrg: 'CAIS / Scale AI Frontier Superhuman Benchmark',
+    description: '3,000 extreme PhD-level questions across dozens of disciplines designed to test superhuman frontier AI systems, resistant to search retrieval and shallow memorization.',
+    iconName: 'Flame',
+    badgeColor: 'rose',
+    topic: 'science',
+  },
+  {
+    id: 'frontiermath',
+    name: 'FrontierMath (Epoch AI Research Mathematics)',
+    shortName: 'FrontierMath',
+    sourceCitation: 'Epoch AI / Tamay Besiroglu et al. (epoch.ai/frontiermath)',
+    standardOrg: 'Epoch AI Frontier Mathematics Standard (Fields Medalist Collaboration)',
+    description: 'Exceptionally difficult, original research-level mathematics problems curated with Fields Medalists and IMO champions spanning arithmetic geometry, topology, and combinatorics.',
+    iconName: 'Compass',
+    badgeColor: 'fuchsia',
+    topic: 'math',
   },
 ];
 
@@ -220,6 +242,95 @@ State your final answer as: Km_app = [X uM], v = [Y uM/s].`,
     verifierType: 'exact_or_alias',
     requiredKeywords: ['16', '50'],
   },
+  {
+    id: 'gpqa-diamond-03',
+    topic: 'science',
+    suite: 'GPQA Diamond',
+    suiteId: 'gpqa_diamond',
+    sourceCitation: 'GPQA Diamond / Organic Chemistry (github.com/idavidrein/gpqa)',
+    domain: 'Organic Chemistry & Stereocenters',
+    title: 'endo-Dicyclopentadiene Stereocenters & Chiral Invariants',
+    difficulty: 'Extreme',
+    question: `Diels-Alder [4+2] cycloaddition dimerization of two 1,3-cyclopentadiene molecules produces endo-dicyclopentadiene (tricyclo[5.2.1.0^{2,6}]deca-3,8-diene) as the kinetically favored stereoisomer.
+1. How many total stereogenic carbon centers (chiral centers) exist on the endo-dicyclopentadiene molecular scaffold?
+2. Is the endo-dicyclopentadiene molecule chiral (optically active, possessing a non-superimposable mirror image) or achiral (meso)? State: Chiral or Achiral.
+3. How many total stereoisomers (enantiomers + diastereomers) exist in total for this bicyclic connectivity framework?
+
+State your final answer as: Stereocenters = [N], Optical = [Chiral/Achiral], Total Stereoisomers = [K].`,
+    expectedFormat: 'FINAL ANSWER: [Stereocenters = 6, Optical = Chiral, Total Stereoisomers = 4]',
+    groundTruth: [
+      'Stereocenters = 6, Optical = Chiral, Total Stereoisomers = 4',
+      '6, Chiral, 4',
+      '6 stereocenters, Chiral, 4 stereoisomers',
+      'Stereocenters = 6, Chiral, 4',
+      '6, Chiral, 4 stereoisomers',
+      '6, Chiral, 4 isomers',
+    ],
+    canonicalAnswer: 'Stereocenters = 6, Optical = Chiral, Total Stereoisomers = 4',
+    explanation: 'In endo-dicyclopentadiene, carbons C1, C2, C6, C7, and junction/bridgehead positions constitute 6 asymmetric stereocenters. The endo-isomer lacks any internal plane of symmetry ($C_s$) or inversion center ($C_i$) due to the asymmetry between the norbornene double bond and the cyclopentene ring, making it strictly CHIRAL (it exists as a pair of enantiomers (+)-endo and (-)-endo). The exo-isomer similarly exists as an enantiomeric pair (+)-exo and (-)-exo. Thus there are 6 stereocenters, the molecule is Chiral, and there are 4 total stereoisomers.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['6', 'Chiral', '4'],
+  },
+  {
+    id: 'gpqa-diamond-04',
+    topic: 'science',
+    suite: 'GPQA Diamond',
+    suiteId: 'gpqa_diamond',
+    sourceCitation: 'GPQA Diamond / Relativistic Quantum Mechanics (github.com/idavidrein/gpqa)',
+    domain: 'Quantum Electrodynamics & Compton Scattering',
+    title: 'Compton Relativistic Scattering Wavelength Shift at 90-Degree Deflection',
+    difficulty: 'Hard',
+    question: `A high-energy gamma photon with initial incident wavelength $\\lambda = 0.500\\text{ pm}$ ($5.00 \\times 10^{-13}\\text{ m}$) undergoes Compton scattering against an initially stationary free electron ($m_e = 9.109 \\times 10^{-31}\\text{ kg}$).
+The scattered photon emerges at a scattering angle of $\\theta = 90.0^\\circ$ relative to the incident trajectory.
+The electron Compton wavelength is defined as:
+$$\\lambda_C = \\frac{h}{m_e c} \\approx 2.426\\text{ pm}$$
+
+1. According to the Compton scattering equation $\\Delta \\lambda = \\lambda' - \\lambda = \\lambda_C(1 - \\cos \\theta)$, what is the exact scattered photon wavelength $\\lambda'$ in picometers (pm)?
+2. What fraction of the incident photon\'s energy is transferred to the kinetic energy of the recoil electron ($E_{\\text{recoil}} / E_{\\text{incident}}$)? Round to 3 decimal places.
+
+State your answer as: lambda = [X pm], Energy Fraction = [Y].`,
+    expectedFormat: 'FINAL ANSWER: [lambda = 2.926 pm, Energy Fraction = 0.829]',
+    groundTruth: [
+      'lambda = 2.926 pm, Energy Fraction = 0.829',
+      '2.926 pm, 0.829',
+      '2.926, 0.829',
+      'lambda = 2.926, Energy Fraction = 0.829',
+      'lambda = 2.93 pm, 0.83',
+      '2.926 pm, 82.9%',
+    ],
+    canonicalAnswer: 'lambda = 2.926 pm, Energy Fraction = 0.829',
+    explanation: 'At $\\theta = 90^\\circ$, $\\cos 90^\\circ = 0$, so $\\Delta \\lambda = \\lambda_C (1 - 0) = 2.426\\text{ pm}$. The scattered wavelength is $\\lambda\' = \\lambda + \\Delta \\lambda = 0.500\\text{ pm} + 2.426\\text{ pm} = 2.926\\text{ pm}$. Since photon energy is $E = hc/\\lambda$, the ratio of scattered energy to incident energy is $E\'/E = \\lambda / \\lambda\' = 0.500 / 2.926 \\approx 0.1709$. Therefore, the fraction transferred to the recoil electron is $1 - (E\'/E) = (\\lambda\' - \\lambda) / \\lambda\' = 2.426 / 2.926 \\approx 0.8291$ (82.9%).',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['2.926', '0.829'],
+  },
+  {
+    id: 'gpqa-diamond-05',
+    topic: 'science',
+    suite: 'GPQA Diamond',
+    suiteId: 'gpqa_diamond',
+    sourceCitation: 'GPQA Diamond / Molecular Biology (github.com/idavidrein/gpqa)',
+    domain: 'Molecular Genetics & Translation Wobble',
+    title: 'Crick Wobble Hypothesis Inosine Base Pairing & tRNA Synthetase Universality',
+    difficulty: 'Hard',
+    question: `In standard biological translation across living organisms:
+1. In Francis Crick\'s classic Wobble Hypothesis, post-transcriptional deamination of adenosine at the first (5\') anticodon position produces the non-canonical modified nucleoside Inosine (I). What are ALL three mRNA 3\'-codon bases that Inosine in the wobble position can specifically base-pair with? State the bases as letters (e.g. A, U, C).
+2. What is the universal minimum number of distinct aminoacyl-tRNA synthetase (aaRS) enzyme families required in a standard organism to charge tRNAs for all 20 canonical proteinogenic amino acids?
+
+Format your answer as: Wobble Bases: [Base1, Base2, Base3], Synthetases: [N].`,
+    expectedFormat: 'FINAL ANSWER: [Wobble Bases: A, U, C, Synthetases: 20]',
+    groundTruth: [
+      'Wobble Bases: A, U, C, Synthetases: 20',
+      'A, U, C, 20',
+      'A, U, and C; 20',
+      'A, C, U, 20',
+      'U, C, A, 20',
+      'Wobble Bases: A, U, C; Synthetases: 20',
+    ],
+    canonicalAnswer: 'Wobble Bases: A, U, C, Synthetases: 20',
+    explanation: 'According to Crick\'s wobble hypothesis, Inosine at the 5\' wobble position of the anticodon forms non-Watson-Crick hydrogen bonds with Adenine (A), Uracil (U), and Cytosine (C) in the 3\' codon position (it cannot pair with Guanine). In all canonical genetic systems, there are exactly 20 distinct aminoacyl-tRNA synthetases (one per proteinogenic amino acid, divided into Class I and Class II).',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['A', 'U', 'C', '20'],
+  },
 
   // =========================================================================
   // 3. SWE-BENCH & LIVECODE (Software Engineering & Algorithmic Systems)
@@ -285,6 +396,97 @@ State your answer as: Total Operations <= [X], Complexity = [O(...)].`,
     explanation: 'Each element in the array is pushed onto the back of the monotonic deque exactly once (N pushes) and popped from either the back or front at most once (at most N pops). Thus the total number of push/pop operations across all N iterations is strictly bounded by $2N = 2 \\times 100,000 = 200,000$ operations, yielding a strict amortized $O(N)$ linear runtime independent of $K$.',
     verifierType: 'exact_or_alias',
     requiredKeywords: ['200000', 'O(N)'],
+  },
+  {
+    id: 'swe-bench-03',
+    topic: 'coding',
+    suite: 'SWE-bench',
+    suiteId: 'swe_bench',
+    sourceCitation: 'SWE-bench / Django ORM (github.com/princeton-nlp/SWE-bench)',
+    domain: 'ORM Query Compilation & SQL Invariants',
+    title: 'Django ORM QuerySet: values() and annotate() GROUP BY Duplication Bug',
+    difficulty: 'Hard',
+    question: `In a production Django repository (tested under SWE-bench issue django__django-13449 / #31824), an engineer writes the following query to count unique publications per author:
+\`\`\`python
+Author.objects.values('id').annotate(book_count=Count('books__id', distinct=True)).order_by('pub_date')
+\`\`\`
+1. Because the \`Meta.ordering\` or explicit \`order_by('pub_date')\` includes a column not listed in \`values('id')\`, what fatal SQL defect does Django's \`SQLCompiler.get_group_by()\` introduce into the compiled SQL statement?
+2. What exact ORM call must be appended to the queryset to clear all default ordering and prevent unexpected columns from being added to the SQL \`GROUP BY\` clause?
+
+Format your answer as: Bug: [description], Method: [orm_method_call].`,
+    expectedFormat: 'FINAL ANSWER: [Bug: Appends pub_date to GROUP BY clause, Method: order_by()]',
+    groundTruth: [
+      'Bug: Appends pub_date to GROUP BY clause, Method: order_by()',
+      'Appends pub_date to GROUP BY, order_by()',
+      'Adds pub_date to GROUP BY, order_by()',
+      'Appends pub_date to GROUP BY, .order_by()',
+      'GROUP BY includes pub_date, order_by()',
+      'Adds pub_date to GROUP BY, .order_by()',
+    ],
+    canonicalAnswer: 'Bug: Appends pub_date to GROUP BY clause, Method: order_by()',
+    explanation: 'In Django ORM, any ordering field referenced in order_by() or the Model Meta.ordering that is not an aggregate is automatically appended to the generated SQL GROUP BY clause. This splits groups that have different pub_dates for the same author, returning multiple duplicate author rows with incorrect partial counts. Calling .order_by() with no arguments explicitly clears all ordering, ensuring only fields in values() populate GROUP BY.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['GROUP BY', 'order_by'],
+  },
+  {
+    id: 'swe-bench-04',
+    topic: 'coding',
+    suite: 'SWE-bench',
+    suiteId: 'swe_bench',
+    sourceCitation: 'SWE-bench / SymPy (github.com/princeton-nlp/SWE-bench)',
+    domain: 'Computer Algebra Systems & Symbolic Linear Algebra',
+    title: 'SymPy Defective Matrix Jordan Block Decomposition & Minimal Polynomial',
+    difficulty: 'Hard',
+    question: `In SymPy issue sympy__sympy-19453, evaluating \`Matrix.jordan_form()\` on defective nilpotent and degenerate matrices triggered algebraic infinite recursion.
+Consider the $3 \\times 3$ rational matrix:
+$$A = \\begin{pmatrix} 3 & 1 & 0 \\\\ 0 & 3 & 1 \\\\ 0 & 0 & 3 \\end{pmatrix}$$
+1. What is the geometric multiplicity $\\dim(\\ker(A - 3I))$ of the eigenvalue $\\lambda = 3$?
+2. What is the size of the Jordan block associated with $\\lambda = 3$?
+3. What is the minimal polynomial $m(\\lambda)$ of $A$?
+4. What is the exact value of the matrix $(A - 3I)^3$?
+
+State your answer as: Geometric Multiplicity: [G], Jordan Block Size: [K x K], Minimal Polynomial: [m(lambda)], (A - 3I)^3: [Result].`,
+    expectedFormat: 'FINAL ANSWER: [Geometric Multiplicity: 1, Jordan Block Size: 3x3, Minimal Polynomial: (lambda - 3)^3, (A - 3I)^3: 0]',
+    groundTruth: [
+      'Geometric Multiplicity: 1, Jordan Block Size: 3x3, Minimal Polynomial: (lambda - 3)^3, (A - 3I)^3: 0',
+      '1, 3x3, (lambda - 3)^3, 0',
+      '1, 3x3, (lambda - 3)^3, Zero matrix',
+      'Geometric Multiplicity: 1, Block Size: 3x3, Minimal Polynomial: (lambda - 3)^3, (A - 3I)^3: 0',
+      '1, 3x3, (lambda - 3)^3, 0 matrix',
+    ],
+    canonicalAnswer: 'Geometric Multiplicity: 1, Jordan Block Size: 3x3, Minimal Polynomial: (lambda - 3)^3, (A - 3I)^3: 0 (Zero Matrix)',
+    explanation: '$A - 3I$ is an upper-triangular nilpotent shift matrix with rank 2, so the nullity $\\dim(\\ker(A - 3I)) = 3 - 2 = 1$. Since algebraic multiplicity is 3 and geometric multiplicity is 1, there is exactly one Jordan block of size $3 \\times 3$. The minimal polynomial equals the characteristic polynomial $m(\\lambda) = (\\lambda - 3)^3$. Since $A - 3I$ is nilpotent of degree 3, $(A - 3I)^3 = 0$ (the $3 \\times 3$ zero matrix).',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['1', '3x3', '0'],
+  },
+  {
+    id: 'swe-bench-05',
+    topic: 'coding',
+    suite: 'SWE-bench',
+    suiteId: 'swe_bench',
+    sourceCitation: 'SWE-bench / scikit-learn (github.com/princeton-nlp/SWE-bench)',
+    domain: 'Numerical Stability & Machine Learning Estimators',
+    title: 'scikit-learn Ridge Regression: Gram Matrix Condition Number Squaring',
+    difficulty: 'Medium',
+    question: `In scikit-learn issue scikit-learn__scikit-learn-14201, resolving numerical precision regressions in \`Ridge\` regression:
+Given an ill-conditioned design matrix $X \\in \\mathbb{R}^{n \\times p}$ with condition number $\\kappa_2(X) = 10^5$:
+1. If an estimator solves the normal equations directly via Cholesky decomposition on the unregularized Gram matrix $X^T X$, what is the condition number $\\kappa_2(X^T X)$?
+2. What standard LAPACK driver routine does scikit-learn\'s \`solver=\'svd\'\` utilize to compute the singular value decomposition with divide-and-conquer to avoid forming $X^T X$ directly? State: \`gelsd\` or \`gelsy\`.
+
+State your answer as: Gram Condition Number: [Value], LAPACK Driver: [Routine].`,
+    expectedFormat: 'FINAL ANSWER: [Gram Condition Number: 10^10, LAPACK Driver: gelsd]',
+    groundTruth: [
+      'Gram Condition Number: 10^10, LAPACK Driver: gelsd',
+      '10^10, gelsd',
+      '1e10, gelsd',
+      '10000000000, gelsd',
+      'Gram Condition: 10^10, Driver: gelsd',
+      '10^10, LAPACK: gelsd',
+    ],
+    canonicalAnswer: 'Gram Condition Number: 10^10, LAPACK Driver: gelsd',
+    explanation: 'The 2-norm condition number of $X^T X$ is the square of the condition number of $X$: $\\kappa_2(X^T X) = (\\kappa_2(X))^2 = (10^5)^2 = 10^{10}$. Squaring the condition number causes loss of roughly 10 decimal digits of numerical precision in IEEE 754 float64. Scikit-learn uses scipy.linalg.lstsq / LAPACK driver routine \`gelsd\` (singular value decomposition using divide and conquer) to solve the least squares system without ever explicitly squaring the matrix.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['10^10', 'gelsd'],
   },
 
   // =========================================================================
@@ -686,6 +888,254 @@ If the contestant switches by choosing randomly between the two remaining unopen
     canonicalAnswer: '3/4',
     explanation: 'Initial probability Door #1 has a car is $2/4 = 1/2$. The probability that Door #1 has a goat is $1/2$. If Door #1 has a car (prob 1/2), the remaining 3 doors contain 1 car and 1 goat (after host reveals 1 goat). The probability of switching to the car is $1/2$. So win prob from this branch = $(1/2) \\times (1/2) = 1/4$. If Door #1 has a goat (prob 1/2), the remaining 2 unopened doors MUST BOTH be cars! So switching yields a car with prob 1. Win prob from this branch = $(1/2) \\times 1 = 1/2$. Total win probability when switching = $1/4 + 1/2 = 3/4$.',
     verifierType: 'exact_or_alias',
+  },
+
+  // =========================================================================
+  // 9. HUMANITY'S LAST EXAM (HLE - PhD & Multidisciplinary Frontier)
+  // =========================================================================
+  {
+    id: 'hle-01',
+    topic: 'science',
+    suite: "Humanity's Last Exam",
+    suiteId: 'hle',
+    sourceCitation: "Humanity's Last Exam / Molecular Genetics (github.com/centerforaisafety/hle)",
+    domain: 'Molecular Biology & CRISPR Repair Dynamics',
+    title: 'CRISPR-Cas9 NHEJ Indel Out-of-Frame Frameshift Probability',
+    difficulty: 'Extreme',
+    question: `In targeted genome editing, SpCas9 generates a double-strand break (DSB) 3 base pairs upstream of the NGG PAM sequence within a protein-coding exon. Repair proceeds predominantly via Non-Homologous End Joining (NHEJ) resulting in small insertions or deletions (indels).
+Assuming an idealized uniform prior distribution across net indel lengths modulo 3 ($\\Delta L \\pmod 3 \\in \\{0, 1, 2\\}$, where only $\\Delta L \\equiv 0 \\pmod 3$ maintains the canonical triplet reading frame):
+1. What is the theoretical probability that an NHEJ-induced indel disrupts the reading frame (inducing a disruptive out-of-frame nonsense or frameshift mutation)? Express as an exact fraction.
+2. If microhomology-mediated end joining (MMEJ) biases repair toward a specific 4-base deletion ($\\Delta L = -4$), which modulo 3 residue class does this deletion belong to ($\\Delta L \\pmod 3$)? State: 0, 1, or 2.
+
+State your answer as: Frameshift Probability = [Fraction], MMEJ Modulo Class = [0, 1, or 2].`,
+    expectedFormat: 'FINAL ANSWER: [Frameshift Probability = 2/3, MMEJ Modulo Class = 2]',
+    groundTruth: [
+      'Frameshift Probability = 2/3, MMEJ Modulo Class = 2',
+      '2/3, 2',
+      '2/3 and 2',
+      'Frameshift: 2/3, Modulo: 2',
+      '2/3, class 2',
+      'Probability: 2/3, Class: 2',
+    ],
+    canonicalAnswer: 'Frameshift Probability = 2/3, MMEJ Modulo Class = 2',
+    explanation: 'Since codons consist of 3 nucleotides, an indel preserves the open reading frame if and only if $\\Delta L \\equiv 0 \\pmod 3$. The non-preserving indel classes are $\\Delta L \\equiv 1 \\pmod 3$ and $\\Delta L \\equiv 2 \\pmod 3$, giving a probability of $2/3$ (66.7%). For a 4-base deletion, $\\Delta L = -4 \\equiv 2 \\pmod 3$ (since $-4 = -2 \\times 3 + 2$). Thus the residue class is 2.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['2/3', '2'],
+  },
+  {
+    id: 'hle-02',
+    topic: 'science',
+    suite: "Humanity's Last Exam",
+    suiteId: 'hle',
+    sourceCitation: "Humanity's Last Exam / Condensed Matter Physics (github.com/centerforaisafety/hle)",
+    domain: 'Topological Quantum Matter & Chern Numbers',
+    title: 'TKNN Invariant First Chern Number and Quantized Hall Conductance',
+    difficulty: 'Extreme',
+    question: `In the integer quantum Hall effect (Thouless-Kohmoto-Nightingale-den Nijs / TKNN formulation), the quantized Hall conductance $\\sigma_{xy}$ of an isolated 2D electron gas on a periodic lattice torus is governed by the topological first Chern number $C_1 \\in \\mathbb{Z}$:
+$$\\sigma_{xy} = C_1 \\frac{e^2}{h}, \\quad C_1 = \\frac{1}{2\\pi} \\int_{\\mathbb{T}^2} \\mathcal{F}_{xy}(\\mathbf{k}) \\, d^2\\mathbf{k}$$
+where $\\mathcal{F}_{xy}(\\mathbf{k})$ is the Berry curvature integrated over the First Brillouin Zone torus $\\mathbb{T}^2$.
+Consider a 3-band lattice model where the Fermi level lies strictly in the insulating energy gap above bands 1 and 2, but below band 3.
+The Berry flux integrals for the three individual bands are:
+- Band 1: $\\frac{1}{2\\pi} \\int \\mathcal{F}_1 = +2$
+- Band 2: $\\frac{1}{2\\pi} \\int \\mathcal{F}_2 = -1$
+- Band 3: $\\frac{1}{2\\pi} \\int \\mathcal{F}_3 = -1$
+
+1. What is the total topological Chern number $C_1^{\\text{total}}$ of the occupied manifold below the Fermi level?
+2. What is the net quantized Hall conductance $\\sigma_{xy}$ in integer units of $\\frac{e^2}{h}$?
+
+State your answer as: Chern Number: [C], Hall Conductance: [G e^2/h].`,
+    expectedFormat: 'FINAL ANSWER: [Chern Number: 1, Hall Conductance: 1 e^2/h]',
+    groundTruth: [
+      'Chern Number: 1, Hall Conductance: 1 e^2/h',
+      '1, 1',
+      'C_1 = 1, sigma_xy = 1 e^2/h',
+      '1, 1 e^2/h',
+      'Chern Number: 1, Conductance: 1 e^2/h',
+      '1, e^2/h',
+    ],
+    canonicalAnswer: 'Chern Number: 1, Hall Conductance: 1 e^2/h',
+    explanation: 'By the additivity of Chern numbers for disconnected bands, the total Chern number of the occupied subspace below the Fermi gap is the sum of the Chern numbers of the occupied bands: $C_1^{\\text{total}} = C_1(\\text{Band 1}) + C_1(\\text{Band 2}) = (+2) + (-1) = +1$. The net quantized Hall conductance is therefore $\\sigma_{xy} = 1 \\times \\frac{e^2}{h}$. Note that the sum over all bands in a closed system vanishes: $+2 + (-1) + (-1) = 0$.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['1'],
+  },
+  {
+    id: 'hle-03',
+    topic: 'science',
+    suite: "Humanity's Last Exam",
+    suiteId: 'hle',
+    sourceCitation: "Humanity's Last Exam / Theoretical Computer Science (github.com/centerforaisafety/hle)",
+    domain: 'Quantum Complexity Theory & Hamiltonian Verification',
+    title: 'Kitaev Quantum Local Hamiltonian Theorem & QMA Completeness',
+    difficulty: 'Hard',
+    question: `In quantum computational complexity theory:
+1. According to the foundational Kitaev Local Hamiltonian Theorem (Kitaev-Shen-Vyalyi), deciding whether the ground-state energy $E_0$ of a $k$-local Hamiltonian on $n$ qubits is $\\le a$ versus $\\ge b$ (with promised spectral promise gap $b - a \\ge 1/\\text{poly}(n)$) is complete for which central quantum complexity class? State the standard acronym (e.g. BQP, QMA, PP).
+2. What is the minimum locality parameter $k \\ge 2$ for which the $k$-Local Hamiltonian problem is proved to remain complete for this class (via Kempe, Kitaev, and Regev)?
+
+State your answer as: Complexity Class: [Class], Minimum Locality k: [k].`,
+    expectedFormat: 'FINAL ANSWER: [Complexity Class: QMA, Minimum Locality k: 2]',
+    groundTruth: [
+      'Complexity Class: QMA, Minimum Locality k: 2',
+      'QMA, 2',
+      'QMA, k = 2',
+      'QMA, k=2',
+      'Class: QMA, k: 2',
+      'QMA, locality 2',
+    ],
+    canonicalAnswer: 'Complexity Class: QMA, Minimum Locality k: 2',
+    explanation: 'The $k$-local Hamiltonian problem is the quantum analogue of the classical Boolean Satisfiability (SAT) problem and is complete for Quantum Merlin-Arthur (QMA). While Kitaev initially proved QMA-completeness for $k = 5$ (later improved to $k = 3$), Kempe, Kitaev, and Regev (2006) proved that the problem remains QMA-complete even for 2-local Hamiltonians ($k = 2$) on a qubit lattice.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['QMA', '2'],
+  },
+  {
+    id: 'hle-04',
+    topic: 'science',
+    suite: "Humanity's Last Exam",
+    suiteId: 'hle',
+    sourceCitation: "Humanity's Last Exam / Macroeconomics & Dynamic Games (github.com/centerforaisafety/hle)",
+    domain: 'Frontier Quantitative Macroeconomics & Ramsey Policy',
+    title: 'Ramsey Commitment vs Discretion at the Zero Lower Bound (ZLB)',
+    difficulty: 'Hard',
+    question: `In modern New Keynesian monetary theory under a binding Zero Lower Bound (ZLB) on the nominal interest rate:
+1. Does a central bank operating under full Ramsey commitment keep the nominal interest rate at zero for a longer duration than a discretionary central bank once the crisis natural rate shock has subsided (the classic "lower-for-longer" forward guidance policy)? Answer: Yes or No.
+2. What is the primary channel through which this commitment stimulates output during the ZLB episode: by raising future expected inflation to lower the current real interest rate, or by raising current tax revenues? State: Lower Real Rate or Tax Revenues.
+
+State your answer as: Lower For Longer: [Yes/No], Channel: [Lower Real Rate/Tax Revenues].`,
+    expectedFormat: 'FINAL ANSWER: [Lower For Longer: Yes, Channel: Lower Real Rate]',
+    groundTruth: [
+      'Lower For Longer: Yes, Channel: Lower Real Rate',
+      'Yes, Lower Real Rate',
+      'Yes, lower real interest rate',
+      'Yes, Lower real rate',
+      'Yes / Lower Real Rate',
+      'Yes, Lower Real Rate channel',
+    ],
+    canonicalAnswer: 'Lower For Longer: Yes, Channel: Lower Real Rate',
+    explanation: 'Under Ramsey commitment (Eggertsson & Woodford), the central bank commits to keeping nominal interest rates at zero even after the natural rate becomes positive ("lower for longer"). By engineering an inflationary boom in the future, it raises inflation expectations during the trap, thereby lowering the real interest rate ($r_t = i_t - \\mathbb{E}_t[\\pi_{t+1}]$) and stimulating current demand. A discretionary central bank cannot credibly promise future inflation, causing deflation and a deeper slump.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['Yes', 'Lower Real Rate'],
+  },
+
+  // =========================================================================
+  // 10. FRONTIERMATH (Epoch AI Research-Level Mathematics)
+  // =========================================================================
+  {
+    id: 'frontiermath-01',
+    topic: 'math',
+    suite: 'FrontierMath',
+    suiteId: 'frontiermath',
+    sourceCitation: 'Epoch AI FrontierMath / Arithmetic Geometry (epoch.ai/frontiermath)',
+    domain: 'Arithmetic Geometry & Elliptic Curves',
+    title: 'Congruent Number Elliptic Curve Mordell-Weil Torsion & 2-Selmer Rank',
+    difficulty: 'Extreme',
+    question: `Consider the family of congruent number elliptic curves defined over $\\mathbb{Q}$ by:
+$$E_d: y^2 = x^3 - d^2 x$$
+where $d$ is a square-free positive integer.
+By the Mordell-Weil theorem, the group of rational points is finitely generated: $E_d(\\mathbb{Q}) \\cong \\mathbb{Z}^r \\oplus E_d(\\mathbb{Q})_{\\text{tors}}$.
+1. What is the exact abstract group structure of the torsion subgroup $E_d(\\mathbb{Q})_{\\text{tors}}$ for any square-free $d$? State the isomorphic group (e.g. Z/2Z x Z/2Z) and its finite order.
+2. For $d = 5$, what is the algebraic rank $r$ of $E_5(\\mathbb{Q})$? (Recall 5 is the area of the rational right triangle with sides $3/2, 20/3, 41/6$).
+
+Format your answer as: Torsion Group: [Z/2Z x Z/2Z (order 4)], Rank r: [r].`,
+    expectedFormat: 'FINAL ANSWER: [Torsion Group: Z/2Z x Z/2Z (order 4), Rank r: 1]',
+    groundTruth: [
+      'Torsion Group: Z/2Z x Z/2Z (order 4), Rank r: 1',
+      'Z/2Z x Z/2Z (order 4), 1',
+      'Z/2 x Z/2, 1',
+      'order 4, 1',
+      'Z/2Z x Z/2Z, 1',
+      'Torsion: Z/2Z x Z/2Z, Rank: 1',
+    ],
+    canonicalAnswer: 'Torsion Group: Z/2Z x Z/2Z (order 4), Rank r: 1',
+    explanation: 'The curve $E_d: y^2 = x(x-d)(x+d)$ has three rational 2-torsion points $(0,0), (d,0), (-d,0)$ plus the point at infinity $\\mathcal{O}$, so $E_d(\\mathbb{Q})_{\\text{tors}} \\cong \\mathbb{Z}/2\\mathbb{Z} \\times \\mathbb{Z}/2\\mathbb{Z}$ of order 4 (no other torsion points exist by Mazur\'s torsion theorem). For $d = 5$, the right triangle $(3/2, 20/3, 41/6)$ gives the non-torsion rational point $x = (41/12)^2 = 1681/144$, yielding a strictly positive rank $r = 1$.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['Z/2Z x Z/2Z', '1'],
+  },
+  {
+    id: 'frontiermath-02',
+    topic: 'math',
+    suite: 'FrontierMath',
+    suiteId: 'frontiermath',
+    sourceCitation: 'Epoch AI FrontierMath / Extremal Combinatorics (epoch.ai/frontiermath)',
+    domain: 'Extremal Graph Theory & Removal Lemmas',
+    title: 'Ruzsa-Szemerédi Triangle Removal Lemma & Behrend 3-AP Density',
+    difficulty: 'Extreme',
+    question: `The Ruzsa-Szemerédi Triangle Removal Lemma states that any graph on $n$ vertices with at most $\\delta(\\epsilon) n^3$ triangles can be made triangle-free by removing at most $\\epsilon n^2$ edges.
+To prove that $\\delta(\\epsilon)^{-1}$ cannot be polynomial in $1/\\epsilon$, Ruzsa and Szemerédi constructed graphs from large subsets $A \\subset \\{1, \\dots, N\\}$ lacking 3-term arithmetic progressions.
+According to Behrend\'s celebrated construction:
+What is the asymptotic growth form of the size $|A|$ of the largest 3-AP-free subset in $\\{1, \\dots, N\\}$?
+Specifically, in the expression $|A| \\gg N \\exp(-c \\sqrt{\\ln N})$, what is the exponent of the logarithm inside the square root ($\\\\ln N$ exponent)? State the exact power (e.g., 1/2, 1, 2).
+
+State your answer as: Exponent: [Power].`,
+    expectedFormat: 'FINAL ANSWER: [Exponent: 1/2]',
+    groundTruth: [
+      'Exponent: 1/2',
+      '1/2',
+      '0.5',
+      'Exponent: 0.5',
+      'one half',
+      'Exponent = 1/2',
+    ],
+    canonicalAnswer: 'Exponent: 1/2',
+    explanation: 'Behrend (1946) constructed a subset $A \\subset \\{1, \\dots, N\\}$ without 3-term arithmetic progressions by mapping integers to points on high-dimensional spheres, achieving size $|A| \\ge c N \\exp(-2\\sqrt{2} \\sqrt{\\ln N}) = c N e^{-C (\\ln N)^{1/2}}$. The exponent of the logarithm inside the radical is exactly $1/2$.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['1/2'],
+  },
+  {
+    id: 'frontiermath-03',
+    topic: 'math',
+    suite: 'FrontierMath',
+    suiteId: 'frontiermath',
+    sourceCitation: 'Epoch AI FrontierMath / Spectral Graph Theory (epoch.ai/frontiermath)',
+    domain: 'Spectral Graph Theory & Expander Graphs',
+    title: 'Ramanujan Expander Graph Alon-Boppana Bound & Second Eigenvalue',
+    difficulty: 'Hard',
+    question: `Let $G$ be an infinite family of connected $d$-regular graphs with adjacency eigenvalues $d = \\lambda_1 > \\lambda_2 \\ge \\dots \\ge \\lambda_n \\ge -d$.
+1. According to the Alon-Boppana theorem, for any $\\epsilon > 0$, as $n \\to \\infty$, the second largest eigenvalue satisfies $\\lambda_2 \\ge 2\\sqrt{d - 1} - \\epsilon$. A $d$-regular graph is defined to be a Ramanujan graph if every non-trivial eigenvalue satisfies $|\\lambda_i| \\le 2\\sqrt{d - 1}$. For a $d = 10$-regular Ramanujan graph, what is the exact algebraic value of the Ramanujan spectral bound $2\\sqrt{d - 1}$?
+2. What is the spectral expansion gap $\\Delta = d - 2\\sqrt{d - 1}$ for $d = 10$?
+
+State your answer as: Bound: [Value], Spectral Gap: [Value].`,
+    expectedFormat: 'FINAL ANSWER: [Bound: 6, Spectral Gap: 4]',
+    groundTruth: [
+      'Bound: 6, Spectral Gap: 4',
+      '6, 4',
+      'Bound: 6, Gap: 4',
+      '2*sqrt(9) = 6, Gap = 4',
+      'Bound: 6, Spectral Gap = 4',
+      '6, 4 gap',
+    ],
+    canonicalAnswer: 'Bound: 6, Spectral Gap: 4',
+    explanation: 'For a $d$-regular graph, the Ramanujan bound is $2\\sqrt{d - 1}$. With $d = 10$, $d - 1 = 9$, and $2\\sqrt{9} = 2 \\times 3 = 6$. The spectral gap between the trivial eigenvalue $\\lambda_1 = 10$ and the non-trivial bound is $\\Delta = 10 - 6 = 4$.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['6', '4'],
+  },
+  {
+    id: 'frontiermath-04',
+    topic: 'math',
+    suite: 'FrontierMath',
+    suiteId: 'frontiermath',
+    sourceCitation: 'Epoch AI FrontierMath / Algebraic Topology (epoch.ai/frontiermath)',
+    domain: 'Stable Homotopy Theory & Adams Spectral Sequence',
+    title: 'Stable Homotopy Groups of Spheres: Order and Generator of pi_3^s',
+    difficulty: 'Extreme',
+    question: `In algebraic topology and stable homotopy theory, the Freudenthal suspension theorem guarantees that the homotopy groups of spheres $\\pi_{n+k}(S^n)$ stabilize for $n \\ge k + 2$, yielding the stable homotopy groups of spheres $\\pi_k^s$.
+For the third stable stem $k = 3$:
+1. What is the exact algebraic group isomorphism for $\\pi_3^s$? State the cyclic group (e.g. Z/24Z).
+2. What is the exact integer order $|\\pi_3^s|$ of this group?
+3. Which fundamental geometric map represents the generator of this group: the complex Hopf map $\\eta$, the quaternionic Hopf map $\\nu$, or the octonionic Hopf map $\\sigma$?
+
+State your answer as: Group: [Z/NZ], Order: [N], Generator Map: [Map].`,
+    expectedFormat: 'FINAL ANSWER: [Group: Z/24Z, Order: 24, Generator Map: Quaternionic Hopf map (nu)]',
+    groundTruth: [
+      'Group: Z/24Z, Order: 24, Generator Map: Quaternionic Hopf map (nu)',
+      'Z/24Z, 24, nu',
+      'Z/24Z, 24, Quaternionic Hopf map',
+      'Z_24, 24, nu',
+      'Group: Z/24Z, Order: 24, Generator: nu',
+      'Z/24Z, 24, quaternionic Hopf map (nu)',
+    ],
+    canonicalAnswer: 'Group: Z/24Z, Order: 24, Generator Map: Quaternionic Hopf map (ν)',
+    explanation: 'By the Adams spectral sequence and classical computations of R. Serre and J. F. Adams, the third stable stem $\\pi_3^s$ is a finite cyclic group isomorphic to $\\mathbb{Z}/24\\mathbb{Z}$ (order 24). It is generated by the stabilization of the quaternionic Hopf fibration $\\nu: S^7 \\to S^4$.',
+    verifierType: 'exact_or_alias',
+    requiredKeywords: ['Z/24Z', '24', 'nu'],
   },
 ];
 

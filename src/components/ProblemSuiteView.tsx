@@ -16,6 +16,8 @@ import {
   Sparkles,
   Tag,
   BookOpen,
+  Sigma,
+  Flame,
 } from 'lucide-react';
 import { BenchmarkProblem, TopicCategory, DifficultyLevel, BenchmarkSuiteId } from '../types/benchmark';
 import { BENCHMARK_SUITES_META } from '../data/benchmarkProblems';
@@ -75,6 +77,12 @@ export const ProblemSuiteView: React.FC<ProblemSuiteViewProps> = ({
       case 'arc_challenge':
       case 'ARC Challenge':
         return <Shapes className="h-3.5 w-3.5 text-cyan-500" />;
+      case 'hle':
+      case "Humanity's Last Exam":
+        return <Flame className="h-3.5 w-3.5 text-rose-500" />;
+      case 'frontiermath':
+      case 'FrontierMath':
+        return <Sigma className="h-3.5 w-3.5 text-indigo-500" />;
       case 'game_theory':
       case 'Game Theory':
         return <Crosshair className="h-3.5 w-3.5 text-indigo-500" />;
@@ -113,7 +121,7 @@ export const ProblemSuiteView: React.FC<ProblemSuiteViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-700 dark:text-slate-400 mt-1 max-w-3xl">
-            Curated evaluation tasks from frontier benchmark standards used by OpenAI, Google DeepMind, Anthropic, and Meta — including <strong>MMLU-Pro</strong>, <strong>GPQA Diamond</strong>, <strong>SWE-bench</strong>, <strong>MATH/AIME</strong>, <strong>IFEval</strong>, and <strong>ARC Challenge</strong>.
+            Curated evaluation tasks from frontier benchmark standards used by OpenAI, Google DeepMind, Anthropic, Epoch AI, and Meta — including <strong>GPQA Diamond</strong>, <strong>Humanity's Last Exam (HLE)</strong>, <strong>SWE-bench</strong>, <strong>FrontierMath</strong>, <strong>MMLU-Pro</strong>, and <strong>MATH/AIME</strong>.
           </p>
         </div>
 
