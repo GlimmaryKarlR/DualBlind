@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import {
@@ -17,7 +16,8 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // In-memory store for benchmark run history and leaderboard records
 interface SavedRunRecord {
@@ -1072,16 +1072,27 @@ app.post('/api/leaderboard/sync-batch', (req, res) => {
 
 // Get leaderboard and run statistics (served from memory with 0 Firestore reads)
 app.get('/api/benchmark/leaderboard', (req, res) => {
-  const runs = getAllRuns();
-  res.json({
-    runs,
-    totalRuns: runs.length,
-  });
+  try {
+    const runs = getAllRuns();
+    res.json({
+      runs,
+      totalRuns: runs.length,
+    });
+  } catch (err: any) {
+    console.error('[API] /api/benchmark/leaderboard error:', err);
+    res.json({ runs: [], totalRuns: 0 });
+  }
 });
 
 // Alias for get runs (0 Firestore reads)
 app.get('/api/leaderboard/runs', (req, res) => {
-  res.json(getAllRuns());
+  try {
+    const runs = getAllRuns();
+    res.json(runs);
+  } catch (err: any) {
+    console.error('[API] /api/leaderboard/runs error:', err);
+    res.json([]);
+  }
 });
 
 // Leaderboard sync status
@@ -1163,7 +1174,7 @@ app.post('/api/huggingface/publish', async (req, res) => {
     let filteredIneligibleCount = 0;
 
     const auditedOperations = operations.map((op: { path: string; content: string }) => {
-      if (op.path === 'data/sft_reasoning_train.jsonl') {
+      if (op.path.includes('sft_')) {
         const lines = op.content.split('\n').filter(Boolean);
         const validLines = lines.filter((line) => {
           try {
@@ -1187,7 +1198,7 @@ app.post('/api/huggingface/publish', async (req, res) => {
         };
       }
 
-      if (op.path === 'data/dpo_preferences_train.jsonl') {
+      if (op.path.includes('dpo_')) {
         const lines = op.content.split('\n').filter(Boolean);
         const validLines = lines.filter((line) => {
           try {
@@ -1208,8 +1219,8 @@ app.post('/api/huggingface/publish', async (req, res) => {
       return op;
     });
 
-    // Check if there are valid 100% accurate records
-    const sftOp = auditedOperations.find((op: any) => op.path === 'data/sft_reasoning_train.jsonl');
+    // Check if there are valid 100% accurate records if SFT file was provided
+    const sftOp = auditedOperations.find((op: any) => op.path.includes('sft_'));
     if (sftOp && (!sftOp.content || sftOp.content.trim().length === 0)) {
       return res.status(400).json({
         error: `Strict Quality Gate: Zero records met the 100% accuracy requirement. Only 100% accurate data is permitted in ${cleanRepo}. ${filteredIneligibleCount} ineligible records were rejected.`,
@@ -1253,7 +1264,9 @@ app.post('/api/huggingface/publish', async (req, res) => {
     }));
 
     const commitPayload = {
-      summary: `Upload 100% Verified DualBlind Arena Reasoning Dataset (${verifiedCount} canonical records)`,
+      summary:
+        (req.body.summary && typeof req.body.summary === 'string' && req.body.summary.trim()) ||
+        `Upload 100% Verified DualBlind Arena Reasoning Dataset (${verifiedCount > 0 ? verifiedCount + ' records' : 'metadata'})`,
       operations: commitOps,
     };
 
@@ -1318,6 +1331,7 @@ app.post('/api/datasets/save-local', (req, res) => {
 // -------------------------------------------------------------
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
