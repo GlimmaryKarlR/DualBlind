@@ -30,6 +30,7 @@ import {
   Check,
   AlertTriangle,
   RotateCcw,
+  BrainCircuit,
 } from 'lucide-react';
 import { BenchmarkRunRecord, DifficultyLevel, TopicCategory } from '../types/benchmark';
 import { formatTime, formatNumber, formatCurrency, getTierBadge, getTeamFunctionalityBadge, getAgentMakeAndModel } from '../utils/formatters';
@@ -44,12 +45,14 @@ interface LeaderboardViewProps {
   runs: BenchmarkRunRecord[];
   onSelectRunToInspect: (run: BenchmarkRunRecord) => void;
   onLaunchChallenge: (problemId: string) => void;
+  onNavigateToDatasets?: () => void;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   runs,
   onSelectRunToInspect,
   onLaunchChallenge,
+  onNavigateToDatasets,
 }) => {
   // Primary Challenge Type Filter
   const [selectedChallengeType, setSelectedChallengeType] = useState<ChallengeTypeId>('all');
@@ -621,6 +624,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 <Download className="h-3.5 w-3.5 text-indigo-700 dark:text-indigo-300" />
                 <span>All JSON ({runs.length})</span>
               </button>
+              {onNavigateToDatasets && (
+                <button
+                  onClick={onNavigateToDatasets}
+                  className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-2.5 py-2 text-xs font-bold text-indigo-800 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300 cursor-pointer shadow-2xs transition-all"
+                  title="View training data pipeline and push directly to Hugging Face"
+                >
+                  <BrainCircuit className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Training Pipeline</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

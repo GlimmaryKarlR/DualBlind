@@ -36,6 +36,7 @@ import { TelemetryPanel } from './components/TelemetryPanel';
 import { ResultModal } from './components/ResultModal';
 import { LeaderboardView } from './components/LeaderboardView';
 import { ProblemSuiteView } from './components/ProblemSuiteView';
+import { DatasetExporterView } from './components/DatasetExporterView';
 import { MatchupConfigModal } from './components/MatchupConfigModal';
 import { MethodologyModal } from './components/MethodologyModal';
 import { ExternalAgentInputCard } from './components/ExternalAgentInputCard';
@@ -43,7 +44,7 @@ import { fireSuccessConfetti, calculateTokenCost, getAgentMakeAndModel } from '.
 
 export default function App() {
   // Navigation & View state
-  const [currentTab, setCurrentTab] = useState<'arena' | 'leaderboard' | 'problems' | 'methodology'>('arena');
+  const [currentTab, setCurrentTab] = useState<'arena' | 'leaderboard' | 'problems' | 'datasets' | 'methodology'>('arena');
   const [selectedTopicFilter, setSelectedTopicFilter] = useState<TopicCategory | 'all'>('all');
 
   // Problem state
@@ -1464,6 +1465,7 @@ export default function App() {
                   handleReset();
                 }
               }}
+              onNavigateToDatasets={() => setCurrentTab('datasets')}
             />
           </div>
         )}
@@ -1479,7 +1481,14 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW 4: METHODOLOGY */}
+        {/* VIEW 4: HUGGING FACE & ML DATASETS */}
+        {currentTab === 'datasets' && (
+          <div className="animate-fade-in">
+            <DatasetExporterView runs={runsHistory} onOpenTokens={handleOpenTokens} />
+          </div>
+        )}
+
+        {/* VIEW 5: METHODOLOGY */}
         {currentTab === 'methodology' && (
           <div className="animate-fade-in">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-10 shadow-xs dark:border-slate-800 dark:bg-slate-900">

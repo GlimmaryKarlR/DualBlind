@@ -10,6 +10,8 @@ export type ChallengeTypeId =
   | 'arc_challenge'
   | 'game_theory'
   | 'formal_logic'
+  | 'hle'
+  | 'frontiermath'
   | 'logic'
   | 'strategy'
   | 'abstract';
@@ -187,6 +189,40 @@ export const CHALLENGE_TYPES: ChallengeTypeDefinition[] = [
     topicCategory: 'logic',
   },
   {
+    id: 'hle',
+    label: "Humanity's Last Exam (HLE - PhD Frontier)",
+    shortLabel: 'HLE',
+    badgeEmoji: '🔥',
+    colorScheme: {
+      bg: 'bg-rose-50/70 dark:bg-rose-950/30',
+      text: 'text-rose-700 dark:text-rose-300',
+      border: 'border-rose-200 dark:border-rose-800/60',
+      pillBg: 'bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300',
+      pillActive: 'bg-rose-600 text-white dark:bg-rose-500 shadow-xs',
+      ring: 'ring-rose-400',
+    },
+    description: '3,000 extreme PhD-level questions across 100+ subjects by Center for AI Safety & Scale AI.',
+    standardOrg: 'Center for AI Safety / Scale AI',
+    topicCategory: 'science',
+  },
+  {
+    id: 'frontiermath',
+    label: 'FrontierMath (Epoch AI Research Mathematics)',
+    shortLabel: 'FrontierMath',
+    badgeEmoji: '🧭',
+    colorScheme: {
+      bg: 'bg-fuchsia-50/70 dark:bg-fuchsia-950/30',
+      text: 'text-fuchsia-700 dark:text-fuchsia-300',
+      border: 'border-fuchsia-200 dark:border-fuchsia-800/60',
+      pillBg: 'bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 dark:bg-fuchsia-950/40 dark:text-fuchsia-300',
+      pillActive: 'bg-fuchsia-600 text-white dark:bg-fuchsia-500 shadow-xs',
+      ring: 'ring-fuchsia-400',
+    },
+    description: 'Exceptionally difficult, original research-level mathematics problems curated with Fields Medalists by Epoch AI.',
+    standardOrg: 'Epoch AI / Leading Mathematicians',
+    topicCategory: 'math',
+  },
+  {
     id: 'logic',
     label: 'Logic (General Deductive)',
     shortLabel: 'Logic',
@@ -272,6 +308,12 @@ export function getChallengeTypeForRun(run: Partial<BenchmarkRunRecord>): Challe
   }
   if (suiteId === 'formal_logic' || suite.includes('formal') || title.includes('decanting') || title.includes('knights') || title.includes('fruit crate') || title.includes('seating') || probId.startsWith('logic')) {
     return CHALLENGE_TYPES.find((c) => c.id === 'formal_logic')!;
+  }
+  if (suiteId === 'hle' || suite.includes('hle') || suite.includes('humanity') || probId.startsWith('hle')) {
+    return CHALLENGE_TYPES.find((c) => c.id === 'hle')!;
+  }
+  if (suiteId === 'frontiermath' || suite.includes('frontiermath') || suite.includes('frontier') || probId.startsWith('frontier')) {
+    return CHALLENGE_TYPES.find((c) => c.id === 'frontiermath')!;
   }
 
   // Fallback to topic category

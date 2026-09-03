@@ -15,7 +15,9 @@ export type BenchmarkSuiteId =
   | 'ifeval'
   | 'arc_challenge'
   | 'game_theory'
-  | 'formal_logic';
+  | 'formal_logic'
+  | 'hle'
+  | 'frontiermath';
 
 export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard' | 'Extreme';
 

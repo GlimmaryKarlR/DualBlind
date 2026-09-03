@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -1095,6 +1096,220 @@ app.post('/api/leaderboard/refresh', async (req, res) => {
     res.json({ success: true, totalRuns: count, status: getSyncStatus() });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Sync failed' });
+  }
+});
+
+// -------------------------------------------------------------
+// Hugging Face & ML Dataset Free Endpoints
+// -------------------------------------------------------------
+
+// Verify a Hugging Face user access token
+app.post('/api/huggingface/whoami', async (req, res) => {
+  try {
+    const token = req.body?.token?.trim();
+    if (!token) {
+      return res.status(400).json({ valid: false, error: 'Token is required' });
+    }
+
+    const hfRes = await fetch('https://huggingface.co/api/whoami-v2', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!hfRes.ok) {
+      const errText = await hfRes.text();
+      return res.status(401).json({ valid: false, error: 'Invalid Hugging Face token: ' + errText });
+    }
+
+    const data = await hfRes.json();
+    return res.json({
+      valid: true,
+      username: data.name,
+      fullname: data.fullname || data.name,
+      email: data.email,
+      isPro: !!data.isPro,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ valid: false, error: err?.message || 'Failed to verify token' });
+  }
+});
+
+// Check Hugging Face server configuration
+app.get('/api/huggingface/status', (req, res) => {
+  res.json({
+    hasServerToken: !!process.env.HF_TOKEN,
+    defaultRepo: 'GlimmaryKarl/DualBlind',
+  });
+});
+
+// Publish SFT and DPO training dataset to Hugging Face Hub (100% Free)
+app.post('/api/huggingface/publish', async (req, res) => {
+  try {
+    const { token, repoName, isPrivate, operations } = req.body;
+    const effectiveToken = (token && typeof token === 'string' && token.trim()) || process.env.HF_TOKEN;
+    if (!effectiveToken || !repoName || !Array.isArray(operations)) {
+      return res.status(400).json({
+        error: 'A Hugging Face Write Token is required. Please provide a token or configure the HF_TOKEN environment variable.',
+      });
+    }
+
+    const cleanToken = effectiveToken.trim();
+    const cleanRepo = (repoName || 'GlimmaryKarl/DualBlind').trim();
+
+    // 1. Strict 100% Accuracy Quality Gate:
+    // Only 100% accurate data can enter GlimmaryKarl/DualBlind or any dataset repository.
+    let verifiedCount = 0;
+    let filteredIneligibleCount = 0;
+
+    const auditedOperations = operations.map((op: { path: string; content: string }) => {
+      if (op.path === 'data/sft_reasoning_train.jsonl') {
+        const lines = op.content.split('\n').filter(Boolean);
+        const validLines = lines.filter((line) => {
+          try {
+            const parsed = JSON.parse(line);
+            const is100Accurate = parsed.is_verified === true && parsed.accuracy_score === 100;
+            if (is100Accurate) {
+              verifiedCount++;
+              return true;
+            }
+            filteredIneligibleCount++;
+            return false;
+          } catch {
+            filteredIneligibleCount++;
+            return false;
+          }
+        });
+
+        return {
+          path: op.path,
+          content: validLines.join('\n'),
+        };
+      }
+
+      if (op.path === 'data/dpo_preferences_train.jsonl') {
+        const lines = op.content.split('\n').filter(Boolean);
+        const validLines = lines.filter((line) => {
+          try {
+            const parsed = JSON.parse(line);
+            // DPO chosen answer MUST be 100% accurate
+            return parsed.chosen_score === 100;
+          } catch {
+            return false;
+          }
+        });
+
+        return {
+          path: op.path,
+          content: validLines.join('\n'),
+        };
+      }
+
+      return op;
+    });
+
+    // Check if there are valid 100% accurate records
+    const sftOp = auditedOperations.find((op: any) => op.path === 'data/sft_reasoning_train.jsonl');
+    if (sftOp && (!sftOp.content || sftOp.content.trim().length === 0)) {
+      return res.status(400).json({
+        error: `Strict Quality Gate: Zero records met the 100% accuracy requirement. Only 100% accurate data is permitted in ${cleanRepo}. ${filteredIneligibleCount} ineligible records were rejected.`,
+      });
+    }
+
+    // 2. Ensure the dataset repo exists on Hugging Face
+    try {
+      const createRes = await fetch('https://huggingface.co/api/repos/create', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cleanToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: cleanRepo.includes('/') ? cleanRepo.split('/')[1] : cleanRepo,
+          type: 'dataset',
+          private: !!isPrivate,
+        }),
+      });
+
+      // 409 means repo already exists, which is expected and fine
+      if (!createRes.ok && createRes.status !== 409) {
+        const createErr = await createRes.text();
+        console.warn('[HuggingFace Hub] Repo creation note (continuing to commit):', createErr);
+      }
+    } catch (e) {
+      console.warn('[HuggingFace Hub] Repo check notice:', e);
+    }
+
+    // 3. Commit files to Hugging Face Hub main branch
+    // Format audited operations for Hugging Face commit API
+    const commitOps = auditedOperations.map((op: { path: string; content: string }) => ({
+      key: 'file',
+      value: {
+        path: op.path,
+        content: Buffer.from(op.content, 'utf-8').toString('base64'),
+        encoding: 'base64',
+      },
+      operation: 'addOrUpdate',
+    }));
+
+    const commitPayload = {
+      summary: `Upload 100% Verified DualBlind Arena Reasoning Dataset (${verifiedCount} canonical records)`,
+      operations: commitOps,
+    };
+
+    const commitRes = await fetch(`https://huggingface.co/api/datasets/${cleanRepo}/commit/main`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(commitPayload),
+    });
+
+    if (!commitRes.ok) {
+      const errText = await commitRes.text();
+      return res.status(commitRes.status).json({
+        error: `Hugging Face Hub commit failed (${commitRes.status}): ${errText}`,
+      });
+    }
+
+    const commitData = await commitRes.json().catch(() => ({}));
+    const datasetUrl = `https://huggingface.co/datasets/${cleanRepo}`;
+
+    return res.json({
+      success: true,
+      repoUrl: datasetUrl,
+      commitData,
+      filesUploaded: operations.length,
+    });
+  } catch (err: any) {
+    console.error('[HuggingFace Publish Error]', err);
+    return res.status(500).json({ error: err?.message || 'Failed to publish to Hugging Face Hub' });
+  }
+});
+
+// Save dataset to server local storage without incurring any cloud fees
+app.post('/api/datasets/save-local', (req, res) => {
+  try {
+    const { sftJsonl, dpoJsonl, readme } = req.body;
+    const datasetsDir = path.join(process.cwd(), 'data', 'datasets');
+    if (!fs.existsSync(datasetsDir)) {
+      fs.mkdirSync(datasetsDir, { recursive: true });
+    }
+
+    if (sftJsonl) {
+      fs.writeFileSync(path.join(datasetsDir, 'sft_reasoning_train.jsonl'), sftJsonl, 'utf-8');
+    }
+    if (dpoJsonl) {
+      fs.writeFileSync(path.join(datasetsDir, 'dpo_preferences_train.jsonl'), dpoJsonl, 'utf-8');
+    }
+    if (readme) {
+      fs.writeFileSync(path.join(datasetsDir, 'README.md'), readme, 'utf-8');
+    }
+
+    res.json({ success: true, dir: datasetsDir });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed saving dataset locally' });
   }
 });
 
