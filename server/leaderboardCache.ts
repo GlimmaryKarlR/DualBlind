@@ -29,20 +29,36 @@ function getDb(): Firestore | null {
 
 function loadCacheFromDisk() {
   try {
-    if (fs.existsSync(CACHE_FILE)) {
-      const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
-      const list = JSON.parse(raw);
-      if (Array.isArray(list)) {
-        list.forEach((item) => {
-          if (item && item.id) {
-            runsCache.set(String(item.id), item);
-          }
-        });
-        console.log(`[Leaderboard Cache] Loaded ${runsCache.size} cached benchmark runs from disk.`);
+    const candidates = [
+      CACHE_FILE,
+      path.join(process.cwd(), 'public', 'data', 'leaderboard_cache.json'),
+      path.join(process.cwd(), 'dist', 'data', 'leaderboard_cache.json'),
+      path.join(__dirname, '..', 'data', 'leaderboard_cache.json'),
+      path.join(__dirname, '..', 'public', 'data', 'leaderboard_cache.json'),
+    ];
+
+    for (const filePath of candidates) {
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const list = JSON.parse(raw);
+        if (Array.isArray(list) && list.length > 0) {
+          list.forEach((item) => {
+            if (item && item.id) {
+              runsCache.set(String(item.id), item);
+            }
+          });
+          console.log(`[Leaderboard Cache] Loaded ${runsCache.size} cached benchmark runs from ${filePath}.`);
+          return;
+        }
       }
     }
   } catch (e) {
     console.warn('[Leaderboard Cache] Failed reading disk cache:', e);
+  }
+
+  // If disk cache not available (e.g. fresh serverless cold-start), hydrate from Firestore
+  if (runsCache.size === 0) {
+    syncFromFirestore(true).catch(() => {});
   }
 }
 
