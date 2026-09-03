@@ -38,7 +38,7 @@ import { LeaderboardView } from './components/LeaderboardView';
 import { ProblemSuiteView } from './components/ProblemSuiteView';
 import { DatasetExporterView } from './components/DatasetExporterView';
 import { MatchupConfigModal } from './components/MatchupConfigModal';
-import { MethodologyModal } from './components/MethodologyModal';
+import { MethodologyView } from './components/MethodologyView';
 import { ExternalAgentInputCard } from './components/ExternalAgentInputCard';
 import { fireSuccessConfetti, calculateTokenCost, getAgentMakeAndModel } from './utils/formatters';
 
@@ -1491,9 +1491,10 @@ export default function App() {
         {/* VIEW 5: METHODOLOGY */}
         {currentTab === 'methodology' && (
           <div className="animate-fade-in">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-10 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-              <MethodologyModal isOpen={true} onClose={() => setCurrentTab('arena')} />
-            </div>
+            <MethodologyView
+              onNavigateToTraining={() => setCurrentTab('datasets')}
+              onNavigateToArena={() => setCurrentTab('arena')}
+            />
           </div>
         )}
       </main>

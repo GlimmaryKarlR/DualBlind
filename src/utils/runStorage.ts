@@ -273,7 +273,9 @@ export async function syncLocalRunsToServer(): Promise<BenchmarkRunRecord[]> {
  * Fetch all universal runs using server in-memory cache first (0 Firestore read quota consumed)
  */
 export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]> {
-  // 1. Primary: Server-side in-memory cache (Instant, 0 Firestore reads)
+  const localCached = getStoredRuns();
+
+  // 1. Primary: Server-side in-memory cache
   try {
     const res = await fetch('/api/leaderboard/runs');
     if (res.ok) {
@@ -284,11 +286,8 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
           const cloudRuns: BenchmarkRunRecord[] = [];
           for (const item of data) {
             const normalized = normalizeRunRecord(item);
-            if (normalized) {
-              cloudRuns.push(normalized);
-            }
+            if (normalized) cloudRuns.push(normalized);
           }
-          const localCached = getStoredRuns();
           const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
           try {
             const lightCache = merged.slice(0, 2500).map((r) => {
@@ -297,47 +296,77 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
             });
             localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
           } catch {
-            // Quota safe - ignore
+            // Quota safe
           }
           return merged;
         }
       }
     }
   } catch {
-    // Network or server starting
+    // Server API unavailable or starting
   }
 
-  // 2. Fallback: Local browser storage
-  const localCached = getStoredRuns();
-  if (localCached.length > 0) {
-    return localCached;
-  }
-
-  // 3. Direct Firestore fetch (only used if server is unavailable)
-  const db = getFirestoreDb();
-  if (!db) return [];
-
+  // 2. Secondary: Static CDN cache fallback (/data/leaderboard_cache.json)
   try {
-    const runsRef = collection(db, FIRESTORE_COLLECTION);
-    const snapshot = await getDocs(runsRef);
-
-    if (snapshot.empty) {
-      return [];
-    }
-
-    const cloudRuns: BenchmarkRunRecord[] = [];
-    snapshot.forEach((docSnap) => {
-      const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
-      if (normalized) {
-        cloudRuns.push(normalized);
+    const resStatic = await fetch('/data/leaderboard_cache.json');
+    if (resStatic.ok) {
+      const dataStatic = await resStatic.json();
+      if (Array.isArray(dataStatic) && dataStatic.length > 0) {
+        const staticRuns: BenchmarkRunRecord[] = [];
+        for (const item of dataStatic) {
+          const normalized = normalizeRunRecord(item);
+          if (normalized) staticRuns.push(normalized);
+        }
+        const merged = mergeAndDeduplicateRuns(staticRuns, localCached);
+        try {
+          const lightCache = merged.slice(0, 2500).map((r) => {
+            const { turns, ...rest } = r;
+            return { ...rest, turns: [] };
+          });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
+        } catch {
+          // Quota safe
+        }
+        return merged;
       }
-    });
-
-    return mergeAndDeduplicateRuns(cloudRuns, []);
-  } catch (error: any) {
-    console.warn('[Universal Leaderboard] Cloud direct fetch notice:', error?.message || error);
-    return getStoredRuns();
+    }
+  } catch {
+    // Static fallback notice
   }
+
+  // 3. Tertiary: Direct Firestore fetch
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      const runsRef = collection(db, FIRESTORE_COLLECTION);
+      const snapshot = await getDocs(runsRef);
+
+      if (!snapshot.empty) {
+        const cloudRuns: BenchmarkRunRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
+          if (normalized) cloudRuns.push(normalized);
+        });
+
+        const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
+        try {
+          const lightCache = merged.slice(0, 2500).map((r) => {
+            const { turns, ...rest } = r;
+            return { ...rest, turns: [] };
+          });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
+        } catch {
+          // Quota safe
+        }
+        return merged;
+      }
+    } catch (error: any) {
+      console.warn('[Universal Leaderboard] Cloud direct fetch notice:', error?.message || error);
+    }
+  }
+
+  // 4. Final Fallback: Local browser storage
+  return localCached;
 }
 
 /**
