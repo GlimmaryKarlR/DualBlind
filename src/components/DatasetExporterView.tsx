@@ -44,6 +44,7 @@ export const DatasetExporterView: React.FC<DatasetExporterViewProps> = ({ runs }
 
   // Push status
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
+  const [publishProgress, setPublishProgress] = useState<string | null>(null);
   const [publishSuccessUrl, setPublishSuccessUrl] = useState<string | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
@@ -51,7 +52,7 @@ export const DatasetExporterView: React.FC<DatasetExporterViewProps> = ({ runs }
   // Check if server already has HF_TOKEN configured
   useEffect(() => {
     fetch('/api/huggingface/status')
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.hasServerToken) {
           setHasServerToken(true);
@@ -68,12 +69,111 @@ export const DatasetExporterView: React.FC<DatasetExporterViewProps> = ({ runs }
     });
   }, [runs]);
 
+  // Robust UTF-8 to Base64 encoder for browser environments (supporting all Unicode characters)
+  const encodeUtf8ToBase64 = (str: string): string => {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  };
+
+  // Direct client-to-Hugging Face Hub commit (bypasses serverless body size limits)
+  const commitDirectToHf = async (
+    authToken: string,
+    repo: string,
+    summary: string,
+    files: Array<{ path: string; content: string }>
+  ) => {
+    const operations = files.map((f) => ({
+      key: 'file',
+      value: {
+        path: f.path,
+        content: encodeUtf8ToBase64(f.content),
+        encoding: 'base64',
+      },
+      operation: 'addOrUpdate',
+    }));
+
+    const res = await fetch(`https://huggingface.co/api/datasets/${repo}/commit/main`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        summary,
+        operations,
+      }),
+    });
+
+    if (!res.ok) {
+      let errMsg = `Hugging Face returned HTTP ${res.status}`;
+      try {
+        const errJson = await res.json();
+        errMsg = errJson.error || errJson.message || JSON.stringify(errJson);
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (text) errMsg = text;
+      }
+      throw new Error(errMsg);
+    }
+
+    return await res.json().catch(() => ({}));
+  };
+
+  // Commit via server proxy (for when server has HF_TOKEN environment variable configured)
+  const commitViaServer = async (
+    authToken: string | undefined,
+    repo: string,
+    summary: string,
+    files: Array<{ path: string; content: string }>
+  ) => {
+    const res = await fetch('/api/huggingface/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: authToken || undefined,
+        repoName: repo,
+        isPrivate: false,
+        summary,
+        operations: files,
+      }),
+    });
+
+    if (!res.ok) {
+      let errMsg = `Server returned HTTP ${res.status}`;
+      try {
+        const errJson = await res.json();
+        errMsg = errJson.error || errJson.message || JSON.stringify(errJson);
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (text) {
+          if (text.includes('Request Entity') || res.status === 413) {
+            errMsg = 'Request payload exceeded server proxy limit (413). Please provide your Hugging Face write token directly.';
+          } else {
+            errMsg = text;
+          }
+        }
+      }
+      throw new Error(errMsg);
+    }
+
+    const data = await res.json().catch(() => ({ success: true }));
+    if (data && data.success === false) {
+      throw new Error(data.error || 'Server publishing failed');
+    }
+    return data;
+  };
+
   // Execute Push to Hugging Face
   const executePush = async (authToken?: string) => {
-    const activeToken = authToken !== undefined ? authToken : token;
+    const activeToken = (authToken !== undefined ? authToken : token).trim();
 
     // If neither server has a token nor client has a stored token, open prompt modal
-    if (!hasServerToken && !activeToken.trim()) {
+    if (!hasServerToken && !activeToken) {
       setModalTokenInput(token);
       setIsTokenModalOpen(true);
       return;
@@ -82,8 +182,13 @@ export const DatasetExporterView: React.FC<DatasetExporterViewProps> = ({ runs }
     setIsPublishing(true);
     setPublishError(null);
     setPublishSuccessUrl(null);
+    setPublishProgress('Validating 100% ground-truth verified records...');
 
     try {
+      if (sftRecords.length === 0) {
+        throw new Error('No 100% verified ground-truth runs found to export. Strict Quality Gate requires accuracy = 100%.');
+      }
+
       // Prepare training records
       const sftJsonl = sftRecords.map((r) => JSON.stringify(r)).join('\n');
       const dpoJsonl = dpoRecords.map((r) => JSON.stringify(r)).join('\n');
@@ -91,37 +196,97 @@ export const DatasetExporterView: React.FC<DatasetExporterViewProps> = ({ runs }
       const datasetInfo = generateDatasetInfoJson(targetRepo, sftRecords.length, dpoRecords.length);
       const trainScript = generateTrainingScript(targetRepo);
 
-      const operations = [
+      const metadataOps = [
         { path: 'README.md', content: readme },
         { path: 'dataset_info.json', content: datasetInfo },
-        { path: 'data/sft_reasoning_train.jsonl', content: sftJsonl },
-        { path: 'data/dpo_preferences_train.jsonl', content: dpoJsonl },
         { path: 'scripts/train_unsloth.py', content: trainScript },
       ];
 
-      const res = await fetch('/api/huggingface/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: activeToken.trim() || undefined,
-          repoName: targetRepo,
-          isPrivate: false,
-          operations,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setPublishSuccessUrl(data.repoUrl || `https://huggingface.co/datasets/${targetRepo}`);
-      } else {
-        setPublishError(data.error || 'Failed to push data to Hugging Face Hub.');
-        // If token unauthorized, open modal
-        if (data.error && (data.error.includes('Token') || data.error.includes('unauthorized') || data.error.includes('401') || data.error.includes('403'))) {
-          setIsTokenModalOpen(true);
+      // Strategy: When client has active token, push directly to Hugging Face Hub (CORS supported, 25MB limit)
+      if (activeToken) {
+        setPublishProgress('Checking repository on Hugging Face Hub...');
+        try {
+          await fetch('https://huggingface.co/api/repos/create', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${activeToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: targetRepo.includes('/') ? targetRepo.split('/')[1] : targetRepo,
+              type: 'dataset',
+              private: false,
+            }),
+          });
+        } catch (e) {
+          console.warn('Hugging Face repo initialization notice:', e);
         }
+
+        setPublishProgress('Step 1/3: Committing metadata, dataset cards & training scripts...');
+        await commitDirectToHf(
+          activeToken,
+          targetRepo,
+          `Initialize ${targetRepo} dataset documentation and training scripts`,
+          metadataOps
+        );
+
+        setPublishProgress(`Step 2/3: Committing SFT reasoning traces (${sftRecords.length} records)...`);
+        await commitDirectToHf(
+          activeToken,
+          targetRepo,
+          `Upload 100% verified SFT reasoning traces (${sftRecords.length} records)`,
+          [{ path: 'data/sft_reasoning_train.jsonl', content: sftJsonl }]
+        );
+
+        setPublishProgress(`Step 3/3: Committing DPO preference pairs (${dpoRecords.length} pairs)...`);
+        await commitDirectToHf(
+          activeToken,
+          targetRepo,
+          `Upload 100% verified DPO preference pairs (${dpoRecords.length} pairs)`,
+          [{ path: 'data/dpo_preferences_train.jsonl', content: dpoJsonl }]
+        );
+      } else {
+        // Fallback: Commit sequentially through server endpoints
+        setPublishProgress('Step 1/3: Uploading metadata & training scripts via server...');
+        await commitViaServer(
+          undefined,
+          targetRepo,
+          `Initialize ${targetRepo} documentation`,
+          metadataOps
+        );
+
+        setPublishProgress(`Step 2/3: Uploading SFT reasoning traces (${sftRecords.length} records)...`);
+        await commitViaServer(
+          undefined,
+          targetRepo,
+          `Upload SFT reasoning traces (${sftRecords.length} records)`,
+          [{ path: 'data/sft_reasoning_train.jsonl', content: sftJsonl }]
+        );
+
+        setPublishProgress(`Step 3/3: Uploading DPO preference pairs (${dpoRecords.length} pairs)...`);
+        await commitViaServer(
+          undefined,
+          targetRepo,
+          `Upload DPO preference pairs (${dpoRecords.length} pairs)`,
+          [{ path: 'data/dpo_preferences_train.jsonl', content: dpoJsonl }]
+        );
       }
+
+      setPublishSuccessUrl(`https://huggingface.co/datasets/${targetRepo}`);
+      setPublishProgress('Done! Verified datasets successfully published to Hugging Face.');
     } catch (err: any) {
-      setPublishError(err?.message || 'Network error communicating with server.');
+      const msg = err?.message || 'Network error communicating with Hugging Face Hub.';
+      setPublishError(msg);
+      if (
+        msg.includes('401') ||
+        msg.includes('403') ||
+        msg.includes('unauthorized') ||
+        msg.includes('Token') ||
+        msg.includes('Invalid') ||
+        msg.includes('permission')
+      ) {
+        setIsTokenModalOpen(true);
+      }
     } finally {
       setIsPublishing(false);
     }
@@ -188,7 +353,7 @@ print(f"Loaded {len(dpo_dataset['train'])} DPO preference pairs")`;
               {isPublishing ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Pushing to {targetRepo}...</span>
+                  <span>{publishProgress || `Pushing to ${targetRepo}...`}</span>
                 </>
               ) : (
                 <>
@@ -264,6 +429,17 @@ print(f"Loaded {len(dpo_dataset['train'])} DPO preference pairs")`;
             </div>
           </div>
         </div>
+
+        {/* In-Flight Progress Banner */}
+        {isPublishing && publishProgress && (
+          <div className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4 dark:border-indigo-900/60 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-200 flex items-center gap-3 text-xs">
+            <RefreshCw className="h-4 w-4 animate-spin text-indigo-600 shrink-0" />
+            <div className="space-y-0.5">
+              <span className="font-bold text-slate-900 dark:text-white">Pushing Dataset to Hugging Face Hub:</span>
+              <p className="text-slate-600 dark:text-slate-300 font-mono text-[11px]">{publishProgress}</p>
+            </div>
+          </div>
+        )}
 
         {/* Success Banner */}
         {publishSuccessUrl && (

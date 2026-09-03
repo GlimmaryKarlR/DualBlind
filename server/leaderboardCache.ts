@@ -1,7 +1,15 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDocs, Firestore } from 'firebase/firestore';
+
+let moduleDir = process.cwd();
+try {
+  moduleDir = path.dirname(fileURLToPath(import.meta.url));
+} catch {
+  moduleDir = process.cwd();
+}
 
 const CACHE_FILE = path.join(process.cwd(), 'data', 'leaderboard_cache.json');
 
@@ -33,8 +41,9 @@ function loadCacheFromDisk() {
       CACHE_FILE,
       path.join(process.cwd(), 'public', 'data', 'leaderboard_cache.json'),
       path.join(process.cwd(), 'dist', 'data', 'leaderboard_cache.json'),
-      path.join(__dirname, '..', 'data', 'leaderboard_cache.json'),
-      path.join(__dirname, '..', 'public', 'data', 'leaderboard_cache.json'),
+      path.join(moduleDir, '..', 'data', 'leaderboard_cache.json'),
+      path.join(moduleDir, '..', 'public', 'data', 'leaderboard_cache.json'),
+      path.join(moduleDir, '..', 'dist', 'data', 'leaderboard_cache.json'),
     ];
 
     for (const filePath of candidates) {
@@ -63,6 +72,10 @@ function loadCacheFromDisk() {
 }
 
 function persistCacheToDisk() {
+  // In serverless environments (Vercel, Lambda), the local filesystem is read-only
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return;
+  }
   try {
     const list = getAllRuns();
     // Safeguard directory existence
@@ -96,12 +109,20 @@ async function syncRunToFirestore(record: any) {
 }
 
 export function getAllRuns(): any[] {
-  const list = Array.from(runsCache.values());
-  return list.sort((a, b) => {
-    const timeA = a.date ? new Date(a.date).getTime() : 0;
-    const timeB = b.date ? new Date(b.date).getTime() : 0;
-    return timeB - timeA;
-  });
+  try {
+    if (runsCache.size === 0) {
+      loadCacheFromDisk();
+    }
+    const list = Array.from(runsCache.values());
+    return list.sort((a, b) => {
+      const timeA = a.date ? new Date(a.date).getTime() : 0;
+      const timeB = b.date ? new Date(b.date).getTime() : 0;
+      return timeB - timeA;
+    });
+  } catch (err) {
+    console.error('[Leaderboard Cache] Error in getAllRuns:', err);
+    return [];
+  }
 }
 
 export function saveRun(run: any): any {
@@ -183,12 +204,13 @@ export function getSyncStatus() {
 // Initialize on module load
 loadCacheFromDisk();
 
-// Schedule a background sync after 5 seconds of server startup
-setTimeout(() => {
-  syncFromFirestore(false).catch(() => {});
-}, 5000);
+// Only schedule background periodic timers in standalone server mode, never in serverless lambdas
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  setTimeout(() => {
+    syncFromFirestore(false).catch(() => {});
+  }, 5000);
 
-// Schedule background periodic sync every 15 minutes
-setInterval(() => {
-  syncFromFirestore(false).catch(() => {});
-}, 15 * 60 * 1000);
+  setInterval(() => {
+    syncFromFirestore(false).catch(() => {});
+  }, 15 * 60 * 1000);
+}
