@@ -5,7 +5,7 @@ import fs2 from "fs";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
-// server-cache/leaderboardCache.ts
+// server/leaderboardCache.ts
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";

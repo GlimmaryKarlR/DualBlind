@@ -9,7 +9,7 @@ import {
   batchSync,
   syncFromFirestore,
   getSyncStatus,
-} from './server-cache/leaderboardCache';
+} from './server/leaderboardCache';
 
 dotenv.config();
 
