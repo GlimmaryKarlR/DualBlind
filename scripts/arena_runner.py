@@ -32,7 +32,6 @@ import signal
 import random
 import argparse
 import traceback
-import threading
 import urllib.request
 import urllib.error
 from datetime import datetime
@@ -100,24 +99,8 @@ def load_env_candidates():
 load_env_candidates()
 
 
-def append_local_run(run_record: dict, filename: str = "arena_runs_local.jsonl", max_retries: int = 5) -> None:
-    """Safely append a run record to the local JSONL file with retry on file contention."""
-    line = json.dumps(run_record, ensure_ascii=False) + "\n"
-    for attempt in range(max_retries):
-        try:
-            with open(filename, "a", encoding="utf-8") as f:
-                f.write(line)
-                f.flush()
-            return
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"  {YELLOW}[!] Local file write note: {e}{RESET}", flush=True)
-            else:
-                time.sleep(random.uniform(0.05, 0.25))
-
-
-def post_json(url: str, payload: dict, timeout: int = 120, max_retries: int = 5) -> dict:
-    """Send a POST request with JSON body, with automatic retry and exponential backoff on HTTP 429/502/503/504."""
+def post_json(url: str, payload: dict, timeout: int = 120) -> dict:
+    """Send a POST request with JSON body, extracting clear error bodies if HTTPError occurs."""
     data_bytes = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -128,72 +111,41 @@ def post_json(url: str, payload: dict, timeout: int = 120, max_retries: int = 5)
         },
         method="POST",
     )
-
-    last_err = None
-    for attempt in range(max_retries):
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            resp_data = response.read().decode("utf-8")
+            return json.loads(resp_data)
+    except urllib.error.HTTPError as e:
+        body = ""
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                resp_data = response.read().decode("utf-8")
-                return json.loads(resp_data)
-        except urllib.error.HTTPError as e:
-            body = ""
-            try:
-                body = e.read().decode("utf-8")
-                err_json = json.loads(body)
-                err_msg = err_json.get("error") or err_json.get("message") or body
-            except Exception:
-                err_msg = body[:240] if body else str(e)
-            
-            # If rate limit (429) or upstream busy (502, 503, 504), back off with jitter
-            if e.code in (429, 502, 503, 504) and attempt < max_retries - 1:
-                backoff = (2.0 ** attempt) + random.uniform(0.8, 2.5)
-                print(f"  {YELLOW}[Rate Limit / {e.code}] Upstream busy. Retrying in {backoff:.1f}s (attempt {attempt+1}/{max_retries})...{RESET}", flush=True)
-                time.sleep(backoff)
-                continue
-
-            raise RuntimeError(f"HTTP {e.code}: {err_msg}") from None
-        except (urllib.error.URLError, TimeoutError, ConnectionResetError, OSError) as net_err:
-            last_err = net_err
-            if attempt < max_retries - 1:
-                backoff = (1.5 ** attempt) + random.uniform(0.5, 1.8)
-                print(f"  {YELLOW}[Network Notice] Transient drop. Retrying in {backoff:.1f}s...{RESET}", flush=True)
-                time.sleep(backoff)
-                continue
-            raise RuntimeError(f"Network error after {max_retries} attempts: {last_err}") from None
-
-    raise RuntimeError(f"Request failed after {max_retries} attempts: {last_err}")
+            body = e.read().decode("utf-8")
+            err_json = json.loads(body)
+            err_msg = err_json.get("error") or err_json.get("message") or body
+        except Exception:
+            err_msg = body[:240] if body else str(e)
+        raise RuntimeError(f"HTTP {e.code}: {err_msg}") from None
 
 
-def get_json(url: str, timeout: int = 30, max_retries: int = 4) -> dict:
-    """Send a GET request and parse JSON response, with automatic retry on transient errors."""
+def get_json(url: str, timeout: int = 30) -> dict:
+    """Send a GET request and parse JSON response, extracting clear error bodies if HTTPError occurs."""
     req = urllib.request.Request(
         url,
         headers={"User-Agent": "DualBlind-Headless-Runner/1.0"},
         method="GET",
     )
-    for attempt in range(max_retries):
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            resp_data = response.read().decode("utf-8")
+            return json.loads(resp_data)
+    except urllib.error.HTTPError as e:
+        body = ""
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                resp_data = response.read().decode("utf-8")
-                return json.loads(resp_data)
-        except urllib.error.HTTPError as e:
-            body = ""
-            try:
-                body = e.read().decode("utf-8")
-                err_json = json.loads(body)
-                err_msg = err_json.get("error") or err_json.get("message") or body
-            except Exception:
-                err_msg = body[:240] if body else str(e)
-            if e.code in (429, 502, 503, 504) and attempt < max_retries - 1:
-                backoff = (1.5 ** attempt) + random.uniform(0.5, 1.5)
-                time.sleep(backoff)
-                continue
-            raise RuntimeError(f"HTTP {e.code}: {err_msg}") from None
-        except (urllib.error.URLError, TimeoutError, ConnectionResetError, OSError) as net_err:
-            if attempt < max_retries - 1:
-                time.sleep(1.0 + random.uniform(0.2, 0.8))
-                continue
-            raise RuntimeError(f"GET failed: {net_err}") from None
+            body = e.read().decode("utf-8")
+            err_json = json.loads(body)
+            err_msg = err_json.get("error") or err_json.get("message") or body
+        except Exception:
+            err_msg = body[:240] if body else str(e)
+        raise RuntimeError(f"HTTP {e.code}: {err_msg}") from None
 
 
 def extract_final_answer(text: str) -> str | None:
@@ -433,34 +385,23 @@ def run_trial(
     trial_num: int,
     agent_a: dict | None = None,
     agent_b: dict | None = None,
-    worker_id: str = "",
-    print_lock: threading.Lock | None = None,
 ) -> dict:
     """Execute a complete multi-agent benchmark trial between Agent Alpha and Beta."""
     base_url = base_url.rstrip("/")
     problem_title = problem.get("title", "Untitled Problem")
     suite_id = problem.get("suiteId", problem.get("suite", "general"))
 
-    w_tag = f"[{worker_id}] " if worker_id else ""
-
-    def safe_print(*args, **kwargs):
-        if print_lock:
-            with print_lock:
-                print(*args, **kwargs)
-        else:
-            print(*args, **kwargs)
-
     # Determine agents for this trial
     if not agent_a or not agent_b:
         agent_a, agent_b = select_trial_agents(config, trial_num)
 
-    safe_print(f"\n{BOLD}{CYAN}{'='*80}{RESET}")
-    safe_print(f"{BOLD}{CYAN}{w_tag}[Trial #{trial_num}] {problem_title} ({str(suite_id).upper()}){RESET}")
-    safe_print(f"{DIM}{w_tag}Question: {problem.get('question', '')[:160]}...{RESET}")
-    safe_print(f"{BLUE}{w_tag}Agent Alpha:{RESET} {BOLD}{agent_a['name']}{RESET} [{agent_a['model']}] ({agent_a['provider']})")
-    safe_print(f"{MAGENTA}{w_tag}Agent Beta: {RESET} {BOLD}{agent_b['name']}{RESET} [{agent_b['model']}] ({agent_b['provider']})")
-    safe_print(f"{DIM}{w_tag}Tier: 100% Free Models Only  |  Protocol: {'Uncapped' if config.uncapped else f'Max {config.max_turns} turns'}{RESET}")
-    safe_print(f"{CYAN}{'-'*80}{RESET}")
+    print(f"\n{BOLD}{CYAN}{'='*80}{RESET}")
+    print(f"{BOLD}{CYAN}[Trial #{trial_num}] {problem_title} ({str(suite_id).upper()}){RESET}")
+    print(f"{DIM}Question: {problem.get('question', '')[:160]}...{RESET}")
+    print(f"{BLUE}Agent Alpha:{RESET} {BOLD}{agent_a['name']}{RESET} [{agent_a['model']}] ({agent_a['provider']})")
+    print(f"{MAGENTA}Agent Beta: {RESET} {BOLD}{agent_b['name']}{RESET} [{agent_b['model']}] ({agent_b['provider']})")
+    print(f"{DIM}Tier: 100% Free Models Only  |  Protocol: {'Uncapped' if config.uncapped else f'Max {config.max_turns} turns'}{RESET}")
+    print(f"{CYAN}{'-'*80}{RESET}")
 
     # Gather API keys from CLI arguments, environment variables, or .env files
     api_keys = {}
@@ -541,12 +482,12 @@ def run_trial(
         agent_label = "Agent Alpha" if is_agent_a else "Agent Beta"
 
         if config.verbose:
-            safe_print(f"\n{BOLD}{agent_color}{w_tag}[Turn {turn_num+1}] {agent_label}:{RESET}", flush=True)
-            safe_print(content, flush=True)
+            print(f"\n{BOLD}{agent_color}[Turn {turn_num+1}] {agent_label}:{RESET}", flush=True)
+            print(content, flush=True)
         else:
             ans_tag = f" -> {GREEN}Claimed: [{extracted_answer}]{RESET}" if extracted_answer else ""
             preview = content.replace("\n", " ")[:90]
-            safe_print(f"  {agent_color}{w_tag}[Turn {turn_num+1:02d}] {agent_label}:{RESET} {preview}...{ans_tag}", flush=True)
+            print(f"  {agent_color}[Turn {turn_num+1:02d}] {agent_label}:{RESET} {preview}...{ans_tag}", flush=True)
 
         turns_data.append({
             "turnNumber": turn_num + 1,
@@ -571,7 +512,7 @@ def run_trial(
             if c0 == c1 and len(c0) > 0:
                 consensus_reached = True
                 final_answer = last_two[-1]
-                safe_print(f"\n{BOLD}{GREEN}{w_tag}✓ Consensus Reached! Both agents agreed on: [{final_answer}]{RESET}", flush=True)
+                print(f"\n{BOLD}{GREEN}✓ Consensus Reached! Both agents agreed on: [{final_answer}]{RESET}", flush=True)
                 break
 
         current_agent_idx += 1
@@ -622,19 +563,18 @@ def run_trial(
     status_color = GREEN if is_correct else RED
     match_tag = "MATCH (100%)" if is_correct else f"FAILED ({accuracy_score}%)"
 
-    safe_print(f"\n{BOLD}{w_tag}Evaluation Result:{RESET}")
-    safe_print(f"  {BOLD}Accuracy:{RESET}       {status_color}{match_tag}{RESET}")
-    safe_print(f"  {BOLD}Submitted:{RESET}      {final_answer or 'None'}")
-    safe_print(f"  {BOLD}Ground Truth:{RESET}   {canonical}")
-    safe_print(f"  {BOLD}Efficiency:{RESET}     {efficiency_index:.2f} pts")
-    safe_print(f"  {BOLD}Total Cost:{RESET}     ${total_cost_usd:.5f}")
-    safe_print(f"  {BOLD}Time Taken:{RESET}     {wall_clock_ms/1000:.2f}s across {len(turns_data)} turns")
-    safe_print(f"  {BOLD}Team Verdict:{RESET}   {team_verdict}")
+    print(f"\n{BOLD}Evaluation Result:{RESET}")
+    print(f"  {BOLD}Accuracy:{RESET}       {status_color}{match_tag}{RESET}")
+    print(f"  {BOLD}Submitted:{RESET}      {final_answer or 'None'}")
+    print(f"  {BOLD}Ground Truth:{RESET}   {canonical}")
+    print(f"  {BOLD}Efficiency:{RESET}     {efficiency_index:.2f} pts")
+    print(f"  {BOLD}Total Cost:{RESET}     ${total_cost_usd:.5f}")
+    print(f"  {BOLD}Time Taken:{RESET}     {wall_clock_ms/1000:.2f}s across {len(turns_data)} turns")
+    print(f"  {BOLD}Team Verdict:{RESET}   {team_verdict}")
 
     # Build persistent benchmark record
     run_record = {
-        "id": f"cli-run-{int(time.time()*1000)}-{random.randint(100, 999)}",
-        "workerId": worker_id or "default",
+        "id": f"cli-run-{int(time.time()*1000)}",
         "problemId": problem.get("id"),
         "problemTitle": problem_title,
         "topic": problem.get("topic", "general"),
@@ -669,13 +609,16 @@ def run_trial(
     try:
         save_res = post_json(f"{base_url}/api/leaderboard/save-run", run_record, timeout=20)
         total_cached = save_res.get("totalCached", "synced")
-        safe_print(f"  {GREEN}{w_tag}✓ Run saved to DualBlind Leaderboard (Cached pool: {total_cached}){RESET}")
+        print(f"  {GREEN}✓ Run saved to DualBlind Leaderboard (Cached pool: {total_cached}){RESET}")
     except Exception as e:
-        safe_print(f"  {YELLOW}{w_tag}[!] Notice saving to leaderboard API: {e}{RESET}")
+        print(f"  {YELLOW}[!] Notice saving to leaderboard API: {e}{RESET}")
 
-    # Save to local JSONL backup (safe concurrent append with retry)
-    out_file = getattr(config, "output", "arena_runs_local.jsonl")
-    append_local_run(run_record, filename=out_file)
+    # Save to local JSONL backup
+    try:
+        with open("arena_runs_local.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(run_record, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"  {YELLOW}[!] Local file write note: {e}{RESET}")
 
     return run_record
 
@@ -811,69 +754,6 @@ def fetch_problems(base_url: str, suite_filter: str | None = None) -> list:
     return OFFLINE_PROBLEMS
 
 
-def worker_loop(
-    worker_name: str,
-    worker_index: int,
-    args: argparse.Namespace,
-    problem_pool: list,
-    print_lock: threading.Lock,
-    shared_counter: dict,
-    total_count: int,
-) -> None:
-    """Independent worker thread/process loop with jittered scheduling and shuffled problem selection."""
-    # Stagger worker start so multiple workers/instances don't ping the server at the exact same millisecond
-    startup_jitter = (worker_index * 1.5) + random.uniform(0.2, 1.0)
-    time.sleep(startup_jitter)
-
-    worker_rng = random.Random(int(time.time() * 1000) ^ os.getpid() ^ (worker_index * 7919))
-    local_problems = list(problem_pool)
-    if getattr(args, "shuffle", True):
-        worker_rng.shuffle(local_problems)
-
-    idx = 0
-    while RUNNING:
-        if total_count > 0:
-            with print_lock:
-                if shared_counter["completed"] >= total_count:
-                    break
-                trial_num = shared_counter["completed"] + 1
-        else:
-            with print_lock:
-                shared_counter["total_started"] += 1
-                trial_num = shared_counter["total_started"]
-
-        problem = local_problems[idx % len(local_problems)]
-        idx += 1
-
-        try:
-            run_trial(
-                base_url=args.url,
-                problem=problem,
-                config=args,
-                trial_num=trial_num,
-                worker_id=worker_name,
-                print_lock=print_lock,
-            )
-            with print_lock:
-                shared_counter["completed"] += 1
-        except Exception as trial_err:
-            err_str = str(trial_err)
-            with print_lock:
-                print(f"\n{YELLOW}[!] Warning [{worker_name}]: Trial #{trial_num} encountered: {err_str}{RESET}", flush=True)
-                if "GEMINI_API_KEY" in err_str:
-                    print(f"{YELLOW}    [→] Missing API Key: Pass --api-key YOUR_KEY or set export GEMINI_API_KEY=YOUR_KEY{RESET}", flush=True)
-                print(f"{DIM}    [{worker_name}] Continuing to next problem in {args.delay}s...{RESET}", flush=True)
-
-        if total_count > 0:
-            with print_lock:
-                if shared_counter["completed"] >= total_count:
-                    break
-
-        if RUNNING and args.delay > 0:
-            # Add jitter to delay so multiple workers don't lock-step on API calls
-            time.sleep(args.delay + random.uniform(0.1, 0.8))
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="DualBlind AI Arena - Autonomous Resilient Headless Benchmark Runner"
@@ -885,7 +765,7 @@ def main():
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")
     parser.add_argument("--deepseek-key", default=None, help="DeepSeek API Key (default: DEEPSEEK_API_KEY from environment or .env)")
     parser.add_argument("--provider", default="all", choices=["all", "openrouter", "google"], help="Provider pool: all (mix OpenRouter & Google), openrouter, or google (default: all)")
-    parser.add_argument("--force-free", dest="force_free", action="store_true", default=True, help="Force 100%% free models only (default: True)")
+    parser.add_argument("--force-free", dest="force_free", action="store_true", default=True, help="Force 100% free models only (default: True)")
     parser.add_argument("--allow-paid", dest="force_free", action="store_false", help="Allow paid non-free models")
     parser.add_argument("--random-models", dest="random_models", action="store_true", default=True, help="Use multiple models at random for each trial (default: True)")
     parser.add_argument("--fixed-models", dest="random_models", action="store_false", help="Disable random selection and stick to model-a / model-b")
@@ -893,7 +773,7 @@ def main():
     parser.add_argument("--model-b", default=None, help="Specific model for Agent Beta (default: random free model)")
     parser.add_argument("--provider-a", default=None, help="Provider for Agent Alpha: google, openrouter, openai, anthropic")
     parser.add_argument("--provider-b", default=None, help="Provider for Agent Beta: google, openrouter, openai, anthropic")
-    parser.add_argument("--list-free-models", action="store_true", help="List all verified 100%% free models across OpenRouter & Google and exit")
+    parser.add_argument("--list-free-models", action="store_true", help="List all verified 100% free models across OpenRouter & Google and exit")
     parser.add_argument("--suite", default="all", help="Benchmark suite filter (e.g. gpqa_diamond, swe_bench, math_aime, hle, all)")
     parser.add_argument("--max-turns", type=int, default=5, help="Maximum turns per agent (default: 5)")
     parser.add_argument("--uncapped", action="store_true", help="Run in uncapped mode until natural consensus or loop cap")
@@ -901,11 +781,6 @@ def main():
     parser.add_argument("--delay", type=float, default=2.0, help="Cooling delay in seconds between trials (default: 2.0)")
     parser.add_argument("--verbose", action="store_true", help="Print full conversational transcripts for each agent turn")
     parser.add_argument("--restart-delay", type=int, default=8, help="Seconds to wait before auto-restarting on fatal crash (default: 8)")
-    parser.add_argument("--workers", type=int, default=1, help="Number of parallel worker threads in this process (e.g. 2 or 4, default: 1)")
-    parser.add_argument("--worker-id", default=None, help="Worker identification label (default: W1, W2 or based on PID)")
-    parser.add_argument("--output", default="arena_runs_local.jsonl", help="Local backup file path (default: arena_runs_local.jsonl)")
-    parser.add_argument("--shuffle", dest="shuffle", action="store_true", default=True, help="Randomize problem order per worker (default: True)")
-    parser.add_argument("--no-shuffle", dest="shuffle", action="store_false", help="Preserve static problem ordering")
 
     args = parser.parse_args()
 
@@ -928,13 +803,10 @@ def main():
     resolved_google_key = args.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     resolved_openrouter_key = args.openrouter_key or os.environ.get("OPENROUTER_API_KEY")
 
-    worker_tag_display = args.worker_id or (f"{args.workers} Parallel Workers" if args.workers > 1 else f"Worker PID {os.getpid()}")
-
     print(f"{BOLD}{GREEN}======================================================{RESET}")
     print(f"{BOLD}{GREEN}   DualBlind AI Arena - Autonomous Headless Runner   {RESET}")
     print(f"{BOLD}{GREEN}======================================================{RESET}")
     print(f"Target Server:   {CYAN}{args.url}{RESET}")
-    print(f"Worker Setup:    {BOLD}{CYAN}{worker_tag_display}{RESET}")
     print(f"Cost Policy:     {BOLD}{GREEN}100% FREE ONLY (Enforced Zero-Cost){RESET}" if args.force_free else f"{YELLOW}Paid & Free Models Allowed{RESET}")
     print(f"Model Selection: {BOLD}{MAGENTA}Randomized Multi-Model Deliberations{RESET}" if args.random_models else f"Fixed: {args.model_a} vs {args.model_b}")
     print(f"Provider Scope:  {BOLD}{CYAN}{args.provider.upper()}{RESET} ({'OpenRouter (:free) & Google Flash' if args.provider == 'all' else args.provider})")
@@ -943,8 +815,8 @@ def main():
     print(f"Keys Detected:")
     print(f"  • Google (Gemini):     {GREEN}✓ Loaded (Active){RESET}" if resolved_google_key else f"  • Google (Gemini):     {YELLOW}○ None detected in environment{RESET}")
     print(f"  • OpenRouter (Universal): {GREEN}✓ Loaded (Active){RESET}" if resolved_openrouter_key else f"  • OpenRouter (Universal): {YELLOW}○ None detected (Free tier / server fallback active){RESET}")
-    print(f"Concurrency:     Safe Multi-Process & Multi-Worker Lock Protection Enabled")
-    print(f"Local Backup:    {args.output}")
+    print(f"Self-Healing:    Active (Auto-restart on any fatal network or API drop)")
+    print(f"Local Backup:    arena_runs_local.jsonl")
     print(f"{GREEN}------------------------------------------------------{RESET}\n")
 
     if not resolved_google_key and not resolved_openrouter_key and "localhost" not in args.url:
@@ -954,7 +826,7 @@ def main():
         print(f"    {CYAN}python3 arena_runner.py --url {args.url} --api-key YOUR_GEMINI_KEY{RESET}\n")
 
     restart_count = 0
-    print_lock = threading.Lock()
+    trial_counter = 0
 
     # Self-Healing Supervisor Loop: Automatically catches all errors and restarts!
     while RUNNING:
@@ -962,50 +834,27 @@ def main():
             problems = fetch_problems(args.url, args.suite)
             print(f"{GREEN}✓ Loaded {len(problems)} benchmark problems from suite '{args.suite}'. Starting runner...{RESET}\n")
 
-            shared_counter = {"total_started": 0, "completed": 0}
-
-            if args.workers <= 1:
-                # Single worker mode
-                w_name = args.worker_id or "W1"
-                worker_loop(
-                    worker_name=w_name,
-                    worker_index=0,
-                    args=args,
-                    problem_pool=problems,
-                    print_lock=print_lock,
-                    shared_counter=shared_counter,
-                    total_count=args.count,
-                )
-            else:
-                # Multi-worker mode in a single process!
-                threads = []
-                for w_idx in range(args.workers):
-                    w_name = f"W{w_idx+1}" if not args.worker_id else f"{args.worker_id}-{w_idx+1}"
-                    t = threading.Thread(
-                        target=worker_loop,
-                        args=(
-                            w_name,
-                            w_idx,
-                            args,
-                            problems,
-                            print_lock,
-                            shared_counter,
-                            args.count,
-                        ),
-                        daemon=True,
-                    )
-                    threads.append(t)
-                    t.start()
-
-                # Monitor worker threads until target reached or interrupted
-                while RUNNING:
-                    if args.count > 0 and shared_counter["completed"] >= args.count:
+            while RUNNING:
+                for problem in problems:
+                    if not RUNNING:
                         break
-                    time.sleep(0.5)
+                    trial_counter += 1
 
-            if args.count > 0 and shared_counter["completed"] >= args.count:
-                print(f"\n{BOLD}{GREEN}✓ Target trial count of {args.count} completed successfully.{RESET}")
-                return
+                    try:
+                        run_trial(args.url, problem, args, trial_counter)
+                    except Exception as trial_err:
+                        err_str = str(trial_err)
+                        print(f"\n{YELLOW}[!] Warning: Trial #{trial_counter} encountered: {err_str}{RESET}")
+                        if "GEMINI_API_KEY" in err_str:
+                            print(f"{YELLOW}    [→] Missing API Key: Pass --api-key YOUR_KEY or set export GEMINI_API_KEY=YOUR_KEY{RESET}")
+                        print(f"{DIM}    Continuing to next problem in {args.delay}s...{RESET}")
+
+                    if args.count > 0 and trial_counter >= args.count:
+                        print(f"\n{BOLD}{GREEN}✓ Target trial count of {args.count} completed successfully.{RESET}")
+                        return
+
+                    if RUNNING and args.delay > 0:
+                        time.sleep(args.delay)
 
         except KeyboardInterrupt:
             print(f"\n{YELLOW}[!] User interrupted script. Shutting down cleanly.{RESET}")
