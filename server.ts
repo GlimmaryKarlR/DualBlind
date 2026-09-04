@@ -4,6 +4,7 @@ import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { uploadFiles, createRepo } from '@huggingface/hub';
+import { BENCHMARK_PROBLEMS, BENCHMARK_SUITES_META } from './src/data/benchmarkProblems';
 import {
   getAllRuns,
   saveRun,
@@ -222,6 +223,23 @@ function evaluateCorrectness(
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// List all available benchmark suites and problems for CLI scripts & runners
+app.get('/api/benchmark/problems', (req, res) => {
+  const { suite, topic } = req.query;
+  let list = BENCHMARK_PROBLEMS;
+  if (suite && typeof suite === 'string') {
+    list = list.filter((p) => p.suiteId === suite || p.suite === suite);
+  }
+  if (topic && typeof topic === 'string') {
+    list = list.filter((p) => p.topic === topic);
+  }
+  res.json({
+    suites: BENCHMARK_SUITES_META,
+    problems: list,
+    totalProblems: list.length,
+  });
 });
 
 // Intelligent fallback generator if Gemini API experiences a temporary 503 high-demand outage
