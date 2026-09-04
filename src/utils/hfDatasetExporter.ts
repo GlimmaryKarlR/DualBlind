@@ -302,6 +302,7 @@ configs:
   data_files:
   - split: train
     path: "data/sft_reasoning_train.jsonl"
+  default: true
 - config_name: dpo_preferences
   data_files:
   - split: train
