@@ -12,7 +12,10 @@ import {
   Code2,
   Database,
   Lock,
+  Download,
 } from 'lucide-react';
+import { uploadFiles, createRepo } from '@huggingface/hub';
+import JSZip from 'jszip';
 import { BenchmarkRunRecord } from '../types/benchmark';
 import {
   generateTrainingDatasets,
@@ -69,59 +72,52 @@ export const DatasetExporterView: React.FC<DatasetExporterViewProps> = ({ runs }
     });
   }, [runs]);
 
-  // Robust UTF-8 to Base64 encoder for browser environments (supporting all Unicode characters)
-  const encodeUtf8ToBase64 = (str: string): string => {
-    const bytes = new TextEncoder().encode(str);
-    let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
+  // Helper to trigger browser download of a generated file
+  const downloadTextFile = (filename: string, content: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  // Direct client-to-Hugging Face Hub commit (bypasses serverless body size limits)
-  const commitDirectToHf = async (
-    authToken: string,
-    repo: string,
-    summary: string,
-    files: Array<{ path: string; content: string }>
-  ) => {
-    const operations = files.map((f) => ({
-      key: 'file',
-      value: {
-        path: f.path,
-        content: encodeUtf8ToBase64(f.content),
-        encoding: 'base64',
-      },
-      operation: 'addOrUpdate',
-    }));
+  // Helper to package and download full dataset bundle as .zip
+  const [isZipping, setIsZipping] = useState<boolean>(false);
+  const downloadZipBundle = async () => {
+    try {
+      setIsZipping(true);
+      const zip = new JSZip();
 
-    const res = await fetch(`https://huggingface.co/api/datasets/${repo}/commit/main`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        summary,
-        operations,
-      }),
-    });
+      const sftJsonl = sftRecords.map((r) => JSON.stringify(r)).join('\n');
+      const dpoJsonl = dpoRecords.map((r) => JSON.stringify(r)).join('\n');
+      const readme = generateHuggingFaceReadme(targetRepo, stats, sftRecords.length, dpoRecords.length);
+      const datasetInfo = generateDatasetInfoJson(targetRepo, sftRecords.length, dpoRecords.length);
+      const trainScript = generateTrainingScript(targetRepo);
 
-    if (!res.ok) {
-      let errMsg = `Hugging Face returned HTTP ${res.status}`;
-      try {
-        const errJson = await res.json();
-        errMsg = errJson.error || errJson.message || JSON.stringify(errJson);
-      } catch {
-        const text = await res.text().catch(() => '');
-        if (text) errMsg = text;
-      }
-      throw new Error(errMsg);
+      zip.file('README.md', readme);
+      zip.file('dataset_info.json', datasetInfo);
+      zip.file('data/sft_reasoning_train.jsonl', sftJsonl);
+      zip.file('data/dpo_preferences_train.jsonl', dpoJsonl);
+      zip.file('scripts/train_unsloth.py', trainScript);
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'DualBlind_Dataset_Bundle.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error('Failed generating zip:', e);
+    } finally {
+      setIsZipping(false);
     }
-
-    return await res.json().catch(() => ({}));
   };
 
   // Commit via server proxy (for when server has HF_TOKEN environment variable configured)
@@ -196,79 +192,58 @@ export const DatasetExporterView: React.FC<DatasetExporterViewProps> = ({ runs }
       const datasetInfo = generateDatasetInfoJson(targetRepo, sftRecords.length, dpoRecords.length);
       const trainScript = generateTrainingScript(targetRepo);
 
-      const metadataOps = [
-        { path: 'README.md', content: readme },
-        { path: 'dataset_info.json', content: datasetInfo },
-        { path: 'scripts/train_unsloth.py', content: trainScript },
+      const filesToUpload = [
+        {
+          path: 'README.md',
+          content: new Blob([readme], { type: 'text/markdown;charset=utf-8' }),
+        },
+        {
+          path: 'data/sft_reasoning_train.jsonl',
+          content: new Blob([sftJsonl], { type: 'application/jsonl;charset=utf-8' }),
+        },
+        {
+          path: 'data/dpo_preferences_train.jsonl',
+          content: new Blob([dpoJsonl], { type: 'application/jsonl;charset=utf-8' }),
+        },
+        {
+          path: 'scripts/train_unsloth.py',
+          content: new Blob([trainScript], { type: 'text/x-python;charset=utf-8' }),
+        },
       ];
 
-      // Strategy: When client has active token, push directly to Hugging Face Hub (CORS supported, 25MB limit)
+      // Strategy: When client has active token, push directly to Hugging Face Hub (CORS supported, official SDK)
       if (activeToken) {
         setPublishProgress('Checking repository on Hugging Face Hub...');
         try {
-          await fetch('https://huggingface.co/api/repos/create', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${activeToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              name: targetRepo.includes('/') ? targetRepo.split('/')[1] : targetRepo,
-              type: 'dataset',
-              private: false,
-            }),
+          await createRepo({
+            repo: { type: 'dataset', name: targetRepo },
+            accessToken: activeToken,
           });
-        } catch (e) {
-          console.warn('Hugging Face repo initialization notice:', e);
+        } catch (e: any) {
+          console.log('Hugging Face repo initialization note:', e?.message || e);
         }
 
-        setPublishProgress('Step 1/3: Committing metadata, dataset cards & training scripts...');
-        await commitDirectToHf(
-          activeToken,
-          targetRepo,
-          `Initialize ${targetRepo} dataset documentation and training scripts`,
-          metadataOps
-        );
-
-        setPublishProgress(`Step 2/3: Committing SFT reasoning traces (${sftRecords.length} records)...`);
-        await commitDirectToHf(
-          activeToken,
-          targetRepo,
-          `Upload 100% verified SFT reasoning traces (${sftRecords.length} records)`,
-          [{ path: 'data/sft_reasoning_train.jsonl', content: sftJsonl }]
-        );
-
-        setPublishProgress(`Step 3/3: Committing DPO preference pairs (${dpoRecords.length} pairs)...`);
-        await commitDirectToHf(
-          activeToken,
-          targetRepo,
-          `Upload 100% verified DPO preference pairs (${dpoRecords.length} pairs)`,
-          [{ path: 'data/dpo_preferences_train.jsonl', content: dpoJsonl }]
-        );
+        setPublishProgress(`Uploading ${filesToUpload.length} files (${sftRecords.length} SFT traces, ${dpoRecords.length} DPO pairs)...`);
+        await uploadFiles({
+          accessToken: activeToken,
+          repo: { type: 'dataset', name: targetRepo },
+          files: filesToUpload,
+          commitTitle: `Upload 100% verified DualBlind dataset (${sftRecords.length} SFT traces, ${dpoRecords.length} DPO pairs)`,
+          commitDescription: `Automated export of 100% ground-truth verified reasoning traces from DualBlind AI Arena.\nStrict Quality Gate enforced: Only 100% accurate trials admitted.`,
+        });
       } else {
-        // Fallback: Commit sequentially through server endpoints
-        setPublishProgress('Step 1/3: Uploading metadata & training scripts via server...');
+        // Fallback: Commit through server proxy
+        setPublishProgress('Uploading datasets via server proxy...');
         await commitViaServer(
           undefined,
           targetRepo,
-          `Initialize ${targetRepo} documentation`,
-          metadataOps
-        );
-
-        setPublishProgress(`Step 2/3: Uploading SFT reasoning traces (${sftRecords.length} records)...`);
-        await commitViaServer(
-          undefined,
-          targetRepo,
-          `Upload SFT reasoning traces (${sftRecords.length} records)`,
-          [{ path: 'data/sft_reasoning_train.jsonl', content: sftJsonl }]
-        );
-
-        setPublishProgress(`Step 3/3: Uploading DPO preference pairs (${dpoRecords.length} pairs)...`);
-        await commitViaServer(
-          undefined,
-          targetRepo,
-          `Upload DPO preference pairs (${dpoRecords.length} pairs)`,
-          [{ path: 'data/dpo_preferences_train.jsonl', content: dpoJsonl }]
+          `Upload 100% verified DualBlind dataset (${sftRecords.length} SFT traces, ${dpoRecords.length} DPO pairs)`,
+          [
+            { path: 'README.md', content: readme },
+            { path: 'data/sft_reasoning_train.jsonl', content: sftJsonl },
+            { path: 'data/dpo_preferences_train.jsonl', content: dpoJsonl },
+            { path: 'scripts/train_unsloth.py', content: trainScript },
+          ]
         );
       }
 
@@ -361,6 +336,17 @@ print(f"Loaded {len(dpo_dataset['train'])} DPO preference pairs")`;
                   <span>Push Data</span>
                 </>
               )}
+            </button>
+
+            {/* Download Bundle Action */}
+            <button
+              onClick={downloadZipBundle}
+              disabled={isZipping || sftRecords.length === 0}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 cursor-pointer disabled:opacity-50"
+              title="Download full dataset bundle (.zip with SFT, DPO & README)"
+            >
+              <Download className="h-3.5 w-3.5 text-slate-500" />
+              <span>{isZipping ? 'Bundling...' : 'Download ZIP'}</span>
             </button>
 
             {!hasServerToken && (
@@ -489,22 +475,50 @@ print(f"Loaded {len(dpo_dataset['train'])} DPO preference pairs")`;
             </h3>
           </div>
 
-          <button
-            onClick={handleCopyCode}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 cursor-pointer self-start sm:self-auto"
-          >
-            {copiedCode ? (
-              <>
-                <Check className="h-3.5 w-3.5 text-emerald-600" />
-                <span className="text-emerald-600">Copied Python Code</span>
-              </>
-            ) : (
-              <>
-                <Copy className="h-3.5 w-3.5" />
-                <span>Copy Python Snippet</span>
-              </>
-            )}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                const sftJsonl = sftRecords.map((r) => JSON.stringify(r)).join('\n');
+                downloadTextFile('sft_reasoning_train.jsonl', sftJsonl, 'application/jsonl');
+              }}
+              disabled={sftRecords.length === 0}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 disabled:opacity-50 cursor-pointer"
+              title="Download verified SFT reasoning traces (.jsonl)"
+            >
+              <Download className="h-3 w-3 text-indigo-500" />
+              <span>Download SFT</span>
+            </button>
+
+            <button
+              onClick={() => {
+                const dpoJsonl = dpoRecords.map((r) => JSON.stringify(r)).join('\n');
+                downloadTextFile('dpo_preferences_train.jsonl', dpoJsonl, 'application/jsonl');
+              }}
+              disabled={dpoRecords.length === 0}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 disabled:opacity-50 cursor-pointer"
+              title="Download verified DPO preference pairs (.jsonl)"
+            >
+              <Download className="h-3 w-3 text-amber-500" />
+              <span>Download DPO</span>
+            </button>
+
+            <button
+              onClick={handleCopyCode}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 cursor-pointer self-start sm:self-auto ml-1"
+            >
+              {copiedCode ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="text-emerald-600">Copied Python Code</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy Python Snippet</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">

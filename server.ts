@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { uploadFiles, createRepo } from '@huggingface/hub';
 import {
   getAllRuns,
   saveRun,
@@ -1229,71 +1230,40 @@ app.post('/api/huggingface/publish', async (req, res) => {
 
     // 2. Ensure the dataset repo exists on Hugging Face
     try {
-      const createRes = await fetch('https://huggingface.co/api/repos/create', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${cleanToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: cleanRepo.includes('/') ? cleanRepo.split('/')[1] : cleanRepo,
-          type: 'dataset',
-          private: !!isPrivate,
-        }),
+      await createRepo({
+        repo: { type: 'dataset', name: cleanRepo },
+        accessToken: cleanToken,
       });
-
-      // 409 means repo already exists, which is expected and fine
-      if (!createRes.ok && createRes.status !== 409) {
-        const createErr = await createRes.text();
-        console.warn('[HuggingFace Hub] Repo creation note (continuing to commit):', createErr);
-      }
-    } catch (e) {
-      console.warn('[HuggingFace Hub] Repo check notice:', e);
+    } catch (e: any) {
+      // 409 means repo already exists, which is expected and normal
+      console.log('[HuggingFace Hub] Repo check note:', e?.message || e);
     }
 
-    // 3. Commit files to Hugging Face Hub main branch
-    // Format audited operations for Hugging Face commit API
-    const commitOps = auditedOperations.map((op: { path: string; content: string }) => ({
-      key: 'file',
-      value: {
-        path: op.path,
-        content: Buffer.from(op.content, 'utf-8').toString('base64'),
-        encoding: 'base64',
-      },
-      operation: 'addOrUpdate',
+    // 3. Upload files using official Hugging Face Hub commit protocol
+    const filesToUpload = auditedOperations.map((op: { path: string; content: string }) => ({
+      path: op.path,
+      content: new Blob([op.content], { type: 'text/plain;charset=utf-8' }),
     }));
 
-    const commitPayload = {
-      summary:
-        (req.body.summary && typeof req.body.summary === 'string' && req.body.summary.trim()) ||
-        `Upload 100% Verified DualBlind Arena Reasoning Dataset (${verifiedCount > 0 ? verifiedCount + ' records' : 'metadata'})`,
-      operations: commitOps,
-    };
+    const summary =
+      (req.body.summary && typeof req.body.summary === 'string' && req.body.summary.trim()) ||
+      `Upload 100% Verified DualBlind Arena Reasoning Dataset (${verifiedCount > 0 ? verifiedCount + ' records' : 'metadata'})`;
 
-    const commitRes = await fetch(`https://huggingface.co/api/datasets/${cleanRepo}/commit/main`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cleanToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(commitPayload),
+    const commitResult = await uploadFiles({
+      accessToken: cleanToken,
+      repo: { type: 'dataset', name: cleanRepo },
+      files: filesToUpload,
+      commitTitle: summary,
+      commitDescription: 'Strict Quality Gate enforced: Only 100% ground-truth accurate trials admitted.',
     });
 
-    if (!commitRes.ok) {
-      const errText = await commitRes.text();
-      return res.status(commitRes.status).json({
-        error: `Hugging Face Hub commit failed (${commitRes.status}): ${errText}`,
-      });
-    }
-
-    const commitData = await commitRes.json().catch(() => ({}));
     const datasetUrl = `https://huggingface.co/datasets/${cleanRepo}`;
 
     return res.json({
       success: true,
       repoUrl: datasetUrl,
-      commitData,
-      filesUploaded: operations.length,
+      commitData: commitResult,
+      filesUploaded: filesToUpload.length,
     });
   } catch (err: any) {
     console.error('[HuggingFace Publish Error]', err);
