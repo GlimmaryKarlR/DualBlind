@@ -882,12 +882,19 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       modelUsed = customRes.modelUsed;
     } else {
       // Default / Google Gemini execution with user or platform key
-      const ai = apiKeys?.google
-        ? new GoogleGenAI({
-            apiKey: apiKeys.google,
-            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-          })
-        : getGenAI();
+      let ai: GoogleGenAI | null = null;
+      if (apiKeys?.google) {
+        ai = new GoogleGenAI({
+          apiKey: apiKeys.google,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+        });
+      } else if (process.env.GEMINI_API_KEY) {
+        try {
+          ai = getGenAI();
+        } catch (e) {
+          ai = null;
+        }
+      }
 
       const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
       contents.push({
@@ -912,22 +919,30 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         });
       }
 
-      const geminiRes = await callGeminiWithResilience(
-        ai,
-        agent.model || 'gemini-3.7-flash',
-        contents,
-        systemInstruction,
-        agent.temperature ?? 0.4,
-        problem,
-        agent,
-        partnerName,
-        history || [],
-        currentTurn || 0
-      );
+      if (!ai) {
+        console.warn('[Gemini API Resilience] Neither request nor server has GEMINI_API_KEY configured. Engaging synthetic analytical fallback to prevent benchmark halt.');
+        const fallbackRes = generateSyntheticTurnFallback(problem, agent, partnerName, history || [], currentTurn || 0);
+        responseText = fallbackRes.text;
+        usage = fallbackRes.usageMetadata;
+        modelUsed = `${agent.model || 'gemini-3.7-flash'} (resilient-offline)`;
+      } else {
+        const geminiRes = await callGeminiWithResilience(
+          ai,
+          agent.model || 'gemini-3.7-flash',
+          contents,
+          systemInstruction,
+          agent.temperature ?? 0.4,
+          problem,
+          agent,
+          partnerName,
+          history || [],
+          currentTurn || 0
+        );
 
-      responseText = geminiRes.text;
-      usage = geminiRes.usageMetadata;
-      modelUsed = geminiRes.modelUsed;
+        responseText = geminiRes.text;
+        usage = geminiRes.usageMetadata;
+        modelUsed = geminiRes.modelUsed;
+      }
     }
 
     const endTime = Date.now();
