@@ -165,38 +165,250 @@ def extract_final_answer(text: str) -> str | None:
     return None
 
 
-def run_trial(base_url: str, problem: dict, config: argparse.Namespace, trial_num: int) -> dict:
+# Verified 100% Free Models Pool (OpenRouter Free Slugs & Google Free Tier)
+VERIFIED_FREE_MODELS = [
+    # OpenRouter Verified 100% Free Models (:free suffix indicates 0 cost)
+    {
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "provider": "openrouter",
+        "name": "Llama 3.3 70B Free",
+        "family": "Meta",
+    },
+    {
+        "model": "deepseek/deepseek-r1:free",
+        "provider": "openrouter",
+        "name": "DeepSeek R1 Free",
+        "family": "DeepSeek",
+    },
+    {
+        "model": "deepseek/deepseek-chat:free",
+        "provider": "openrouter",
+        "name": "DeepSeek V3 Chat Free",
+        "family": "DeepSeek",
+    },
+    {
+        "model": "deepseek/deepseek-r1-distill-llama-70b:free",
+        "provider": "openrouter",
+        "name": "DeepSeek R1 Distill 70B Free",
+        "family": "DeepSeek",
+    },
+    {
+        "model": "qwen/qwen-2.5-72b-instruct:free",
+        "provider": "openrouter",
+        "name": "Qwen 2.5 72B Free",
+        "family": "Qwen",
+    },
+    {
+        "model": "qwen/qwen-2.5-coder-32b-instruct:free",
+        "provider": "openrouter",
+        "name": "Qwen 2.5 Coder 32B Free",
+        "family": "Qwen",
+    },
+    {
+        "model": "qwen/qwq-32b:free",
+        "provider": "openrouter",
+        "name": "QwQ 32B Reasoning Free",
+        "family": "Qwen",
+    },
+    {
+        "model": "mistralai/mistral-small-24b-instruct-2501:free",
+        "provider": "openrouter",
+        "name": "Mistral Small 24B Free",
+        "family": "Mistral",
+    },
+    {
+        "model": "mistralai/mistral-7b-instruct:free",
+        "provider": "openrouter",
+        "name": "Mistral 7B Free",
+        "family": "Mistral",
+    },
+    {
+        "model": "google/gemini-2.0-flash-exp:free",
+        "provider": "openrouter",
+        "name": "Gemini 2.0 Flash Exp (OpenRouter Free)",
+        "family": "Google",
+    },
+    {
+        "model": "meta-llama/llama-3.1-8b-instruct:free",
+        "provider": "openrouter",
+        "name": "Llama 3.1 8B Free",
+        "family": "Meta",
+    },
+    {
+        "model": "meta-llama/llama-3.2-3b-instruct:free",
+        "provider": "openrouter",
+        "name": "Llama 3.2 3B Free",
+        "family": "Meta",
+    },
+    {
+        "model": "microsoft/phi-3-mini-128k-instruct:free",
+        "provider": "openrouter",
+        "name": "Phi 3 Mini Free",
+        "family": "Microsoft",
+    },
+    {
+        "model": "cognitivecomputations/dolphin3.0-r1-mistral-24b:free",
+        "provider": "openrouter",
+        "name": "Dolphin 3.0 R1 Free",
+        "family": "Cognitive",
+    },
+    {
+        "model": "openrouter/free",
+        "provider": "openrouter",
+        "name": "OpenRouter Free Auto-Router",
+        "family": "Auto",
+    },
+    # Google AI Studio Free Tier Models
+    {
+        "model": "gemini-2.5-flash",
+        "provider": "google",
+        "name": "Gemini 2.5 Flash",
+        "family": "Google",
+    },
+    {
+        "model": "gemini-2.0-flash",
+        "provider": "google",
+        "name": "Gemini 2.0 Flash",
+        "family": "Google",
+    },
+    {
+        "model": "gemini-1.5-flash",
+        "provider": "google",
+        "name": "Gemini 1.5 Flash",
+        "family": "Google",
+    },
+]
+
+
+def is_model_free(model_name: str, provider: str = "") -> bool:
+    """Check whether a model qualifies as zero-cost free tier."""
+    if not model_name:
+        return False
+    m = model_name.lower().strip()
+    if ":free" in m or m.endswith("/free") or m == "openrouter/free":
+        return True
+    if provider.lower() == "google" or m.startswith("gemini-") or m.startswith("google/"):
+        if any(f in m for f in ["flash", "gemma", "exp"]):
+            return True
+    for entry in VERIFIED_FREE_MODELS:
+        if entry["model"].lower() == m:
+            return True
+    return False
+
+
+def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dict, dict]:
+    """Select Agent Alpha and Agent Beta for this trial, enforcing free models and random pairing."""
+    # Check if user explicitly requested fixed models
+    has_custom = bool(config.model_a and config.model_b)
+    use_random = getattr(config, "random_models", True)
+
+    if has_custom and not use_random:
+        prov_a = config.provider_a or ("openrouter" if ":free" in config.model_a or "/" in config.model_a else "google")
+        prov_b = config.provider_b or ("openrouter" if ":free" in config.model_b or "/" in config.model_b else "google")
+
+        # Enforce free models if forced
+        if getattr(config, "force_free", True):
+            if not is_model_free(config.model_a, prov_a):
+                print(f"{YELLOW}[!] Notice: --force-free is active. '{config.model_a}' is not verified free; swapping to free Llama 3.3.{RESET}")
+                config.model_a = "meta-llama/llama-3.3-70b-instruct:free"
+                prov_a = "openrouter"
+            if not is_model_free(config.model_b, prov_b):
+                print(f"{YELLOW}[!] Notice: --force-free is active. '{config.model_b}' is not verified free; swapping to free DeepSeek R1.{RESET}")
+                config.model_b = "deepseek/deepseek-r1:free"
+                prov_b = "openrouter"
+
+        agent_a = {
+            "name": f"Agent Alpha ({config.model_a})",
+            "model": config.model_a,
+            "provider": prov_a,
+            "temperature": 0.4,
+            "displayName": config.model_a,
+        }
+        agent_b = {
+            "name": f"Agent Beta ({config.model_b})",
+            "model": config.model_b,
+            "provider": prov_b,
+            "temperature": 0.4,
+            "displayName": config.model_b,
+        }
+        return agent_a, agent_b
+
+    # Filter available free pool according to provider filter
+    provider_filter = getattr(config, "provider", "all").lower()
+    pool = list(VERIFIED_FREE_MODELS)
+    if provider_filter == "openrouter":
+        pool = [m for m in pool if m["provider"] == "openrouter"]
+    elif provider_filter == "google":
+        pool = [m for m in pool if m["provider"] == "google"]
+
+    if not pool:
+        pool = list(VERIFIED_FREE_MODELS)
+
+    # Pick Agent A
+    spec_a = random.choice(pool)
+
+    # Pick Agent B (distinct model for dynamic collaborative cross-checking)
+    remaining_pool = [m for m in pool if m["model"] != spec_a["model"]]
+    
+    # In 'all' mode, favor cross-provider or cross-family pairings
+    cross_candidates = [m for m in remaining_pool if m["provider"] != spec_a["provider"]]
+    if cross_candidates and random.random() < 0.65:
+        spec_b = random.choice(cross_candidates)
+    elif remaining_pool:
+        spec_b = random.choice(remaining_pool)
+    else:
+        spec_b = random.choice(pool)
+
+    agent_a = {
+        "name": f"Agent Alpha ({spec_a['name']})",
+        "model": spec_a["model"],
+        "provider": spec_a["provider"],
+        "temperature": 0.4,
+        "displayName": spec_a["name"],
+    }
+    agent_b = {
+        "name": f"Agent Beta ({spec_b['name']})",
+        "model": spec_b["model"],
+        "provider": spec_b["provider"],
+        "temperature": 0.4,
+        "displayName": spec_b["name"],
+    }
+    return agent_a, agent_b
+
+
+def run_trial(
+    base_url: str,
+    problem: dict,
+    config: argparse.Namespace,
+    trial_num: int,
+    agent_a: dict | None = None,
+    agent_b: dict | None = None,
+) -> dict:
     """Execute a complete multi-agent benchmark trial between Agent Alpha and Beta."""
     base_url = base_url.rstrip("/")
     problem_title = problem.get("title", "Untitled Problem")
     suite_id = problem.get("suiteId", problem.get("suite", "general"))
 
+    # Determine agents for this trial
+    if not agent_a or not agent_b:
+        agent_a, agent_b = select_trial_agents(config, trial_num)
+
     print(f"\n{BOLD}{CYAN}{'='*80}{RESET}")
     print(f"{BOLD}{CYAN}[Trial #{trial_num}] {problem_title} ({str(suite_id).upper()}){RESET}")
     print(f"{DIM}Question: {problem.get('question', '')[:160]}...{RESET}")
-    print(f"{BLUE}Agent A:{RESET} {config.model_a} ({config.provider_a})  |  {MAGENTA}Agent B:{RESET} {config.model_b} ({config.provider_b})")
+    print(f"{BLUE}Agent Alpha:{RESET} {BOLD}{agent_a['name']}{RESET} [{agent_a['model']}] ({agent_a['provider']})")
+    print(f"{MAGENTA}Agent Beta: {RESET} {BOLD}{agent_b['name']}{RESET} [{agent_b['model']}] ({agent_b['provider']})")
+    print(f"{DIM}Tier: 100% Free Models Only  |  Protocol: {'Uncapped' if config.uncapped else f'Max {config.max_turns} turns'}{RESET}")
     print(f"{CYAN}{'-'*80}{RESET}")
-
-    agent_a = {
-        "name": f"Agent Alpha ({config.model_a})",
-        "model": config.model_a,
-        "provider": config.provider_a,
-        "temperature": 0.4,
-    }
-    agent_b = {
-        "name": f"Agent Beta ({config.model_b})",
-        "model": config.model_b,
-        "provider": config.provider_b,
-        "temperature": 0.4,
-    }
 
     # Gather API keys from CLI arguments, environment variables, or .env files
     api_keys = {}
     active_google_key = config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if active_google_key:
         api_keys["google"] = active_google_key
-    if config.openrouter_key or os.environ.get("OPENROUTER_API_KEY"):
-        api_keys["openrouter"] = config.openrouter_key or os.environ.get("OPENROUTER_API_KEY")
+    active_openrouter_key = config.openrouter_key or os.environ.get("OPENROUTER_API_KEY")
+    if active_openrouter_key:
+        api_keys["openrouter"] = active_openrouter_key
     if config.openai_key or os.environ.get("OPENAI_API_KEY"):
         api_keys["openai"] = config.openai_key or os.environ.get("OPENAI_API_KEY")
     if config.anthropic_key or os.environ.get("ANTHROPIC_API_KEY"):
@@ -550,10 +762,16 @@ def main():
     parser.add_argument("--openai-key", default=None, help="OpenAI API Key (default: OPENAI_API_KEY from environment or .env)")
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")
     parser.add_argument("--deepseek-key", default=None, help="DeepSeek API Key (default: DEEPSEEK_API_KEY from environment or .env)")
-    parser.add_argument("--model-a", default="gemini-3.7-flash", help="Model for Agent Alpha (default: gemini-3.7-flash)")
-    parser.add_argument("--model-b", default="gemini-2.5-flash", help="Model for Agent Beta (default: gemini-2.5-flash)")
-    parser.add_argument("--provider-a", default="google", help="Provider for Agent Alpha: google, openrouter, openai, anthropic (default: google)")
-    parser.add_argument("--provider-b", default="google", help="Provider for Agent Beta: google, openrouter, openai, anthropic (default: google)")
+    parser.add_argument("--provider", default="all", choices=["all", "openrouter", "google"], help="Provider pool: all (mix OpenRouter & Google), openrouter, or google (default: all)")
+    parser.add_argument("--force-free", dest="force_free", action="store_true", default=True, help="Force 100%% free models only (default: True)")
+    parser.add_argument("--allow-paid", dest="force_free", action="store_false", help="Allow paid non-free models")
+    parser.add_argument("--random-models", dest="random_models", action="store_true", default=True, help="Use multiple models at random for each trial (default: True)")
+    parser.add_argument("--fixed-models", dest="random_models", action="store_false", help="Disable random selection and stick to model-a / model-b")
+    parser.add_argument("--model-a", default=None, help="Specific model for Agent Alpha (default: random free model)")
+    parser.add_argument("--model-b", default=None, help="Specific model for Agent Beta (default: random free model)")
+    parser.add_argument("--provider-a", default=None, help="Provider for Agent Alpha: google, openrouter, openai, anthropic")
+    parser.add_argument("--provider-b", default=None, help="Provider for Agent Beta: google, openrouter, openai, anthropic")
+    parser.add_argument("--list-free-models", action="store_true", help="List all verified 100%% free models across OpenRouter & Google and exit")
     parser.add_argument("--suite", default="all", help="Benchmark suite filter (e.g. gpqa_diamond, swe_bench, math_aime, hle, all)")
     parser.add_argument("--max-turns", type=int, default=5, help="Maximum turns per agent (default: 5)")
     parser.add_argument("--uncapped", action="store_true", help="Run in uncapped mode until natural consensus or loop cap")
@@ -564,25 +782,45 @@ def main():
 
     args = parser.parse_args()
 
-    # Detect if an API key is available
+    if args.list_free_models:
+        print(f"\n{BOLD}{CYAN}DualBlind Arena - Verified 100% Free Models Catalog:{RESET}")
+        print(f"{CYAN}{'='*75}{RESET}")
+        print(f"{BOLD}{'Model Slug':<45} {'Provider':<12} {'Family':<10}{RESET}")
+        print(f"{'-'*75}")
+        for m in VERIFIED_FREE_MODELS:
+            print(f"{GREEN}{m['model']:<45}{RESET} {CYAN}{m['provider']:<12}{RESET} {m.get('family', ''):<10}")
+        print(f"{CYAN}{'='*75}{RESET}")
+        print(f"Total verified free models: {len(VERIFIED_FREE_MODELS)}\n")
+        return
+
+    # If user provided specific models, turn off random unless explicitly asked
+    if args.model_a and args.model_b and "--random-models" not in sys.argv:
+        args.random_models = False
+
+    # Detect API keys
     resolved_google_key = args.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    resolved_openrouter_key = args.openrouter_key or os.environ.get("OPENROUTER_API_KEY")
 
     print(f"{BOLD}{GREEN}======================================================{RESET}")
     print(f"{BOLD}{GREEN}   DualBlind AI Arena - Autonomous Headless Runner   {RESET}")
     print(f"{BOLD}{GREEN}======================================================{RESET}")
     print(f"Target Server:   {CYAN}{args.url}{RESET}")
-    print(f"Agent Alpha:     {BLUE}{args.model_a} ({args.provider_a}){RESET}")
-    print(f"Agent Beta:      {MAGENTA}{args.model_b} ({args.provider_b}){RESET}")
+    print(f"Cost Policy:     {BOLD}{GREEN}100% FREE ONLY (Enforced Zero-Cost){RESET}" if args.force_free else f"{YELLOW}Paid & Free Models Allowed{RESET}")
+    print(f"Model Selection: {BOLD}{MAGENTA}Randomized Multi-Model Deliberations{RESET}" if args.random_models else f"Fixed: {args.model_a} vs {args.model_b}")
+    print(f"Provider Scope:  {BOLD}{CYAN}{args.provider.upper()}{RESET} ({'OpenRouter (:free) & Google Flash' if args.provider == 'all' else args.provider})")
     print(f"Suite Filter:    {args.suite}")
     print(f"Protocol:        {'Uncapped Deliberation' if args.uncapped else f'Max {args.max_turns} turns'}")
-    print(f"API Key Status:  {GREEN}Loaded (Gemini Active){RESET}" if resolved_google_key else f"{YELLOW}None detected (Will request from server or use synthetic fallback){RESET}")
-    print(f"Self-Healing:    Active (Auto-restart on any exception enabled)")
+    print(f"Keys Detected:")
+    print(f"  • Google (Gemini):     {GREEN}✓ Loaded (Active){RESET}" if resolved_google_key else f"  • Google (Gemini):     {YELLOW}○ None detected in environment{RESET}")
+    print(f"  • OpenRouter (Universal): {GREEN}✓ Loaded (Active){RESET}" if resolved_openrouter_key else f"  • OpenRouter (Universal): {YELLOW}○ None detected (Free tier / server fallback active){RESET}")
+    print(f"Self-Healing:    Active (Auto-restart on any fatal network or API drop)")
     print(f"Local Backup:    arena_runs_local.jsonl")
     print(f"{GREEN}------------------------------------------------------{RESET}\n")
 
-    if not resolved_google_key and "localhost" not in args.url:
+    if not resolved_google_key and not resolved_openrouter_key and "localhost" not in args.url:
         print(f"{YELLOW}[i] Pro-tip for Remote Server runs:{RESET}")
-        print(f"    If the remote server has no GEMINI_API_KEY configured, pass your key via:")
+        print(f"    Pass your key directly on the CLI:")
+        print(f"    {CYAN}python3 arena_runner.py --url {args.url} --openrouter-key YOUR_OPENROUTER_KEY{RESET}")
         print(f"    {CYAN}python3 arena_runner.py --url {args.url} --api-key YOUR_GEMINI_KEY{RESET}\n")
 
     restart_count = 0
