@@ -490,12 +490,19 @@ async function callOpenAICompatible(
   messages: Array<{ role: string; content: string }>,
   temperature: number
 ): Promise<{ text: string; usageMetadata: any; modelUsed: string }> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+  };
+
+  if (endpointUrl.includes('openrouter.ai')) {
+    headers['HTTP-Referer'] = 'https://dual-blind.vercel.app';
+    headers['X-Title'] = 'DualBlind AI Arena';
+  }
+
   const res = await fetch(endpointUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers,
     body: JSON.stringify({
       model: modelName,
       messages,
@@ -843,18 +850,28 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       responseText = orcaRes.text;
       usage = orcaRes.usageMetadata;
       modelUsed = orcaRes.modelUsed;
-    } else if (apiKeys?.openrouter) {
+    } else if (provider === 'openrouter' || apiKeys?.openrouter) {
+      const openRouterKey = apiKeys?.openrouter || process.env.OPENROUTER_API_KEY;
       const targetModel = resolveOpenRouterModel(agent.model);
-      const openRouterRes = await callOpenAICompatible(
-        'https://openrouter.ai/api/v1/chat/completions',
-        apiKeys.openrouter,
-        targetModel,
-        chatMessages,
-        agent.temperature ?? 0.4
-      );
-      responseText = openRouterRes.text;
-      usage = openRouterRes.usageMetadata;
-      modelUsed = openRouterRes.modelUsed;
+
+      if (!openRouterKey) {
+        console.warn(`[OpenRouter] Neither request nor server has OPENROUTER_API_KEY configured for model ${targetModel}. Engaging synthetic analytical fallback.`);
+        const fallbackRes = generateSyntheticTurnFallback(problem, agent, partnerName, history || [], currentTurn || 0);
+        responseText = fallbackRes.text;
+        usage = fallbackRes.usageMetadata;
+        modelUsed = `${targetModel} (resilient-offline)`;
+      } else {
+        const openRouterRes = await callOpenAICompatible(
+          'https://openrouter.ai/api/v1/chat/completions',
+          openRouterKey,
+          targetModel,
+          chatMessages,
+          agent.temperature ?? 0.4
+        );
+        responseText = openRouterRes.text;
+        usage = openRouterRes.usageMetadata;
+        modelUsed = openRouterRes.modelUsed;
+      }
     } else if (apiKeys?.orcarouter) {
       const endpoint = apiKeys.orcarouterEndpoint || process.env.ORCAROUTER_BASE_URL || 'https://api.orcarouter.com/v1/chat/completions';
       const targetModel = resolveOpenRouterModel(agent.model);
