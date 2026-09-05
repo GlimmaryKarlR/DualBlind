@@ -803,6 +803,7 @@ def fetch_problems(base_url: str, suite_filter: str | None = None) -> list:
 
 
 def main():
+    global RUNNING
     parser = argparse.ArgumentParser(
         description="DualBlind AI Arena - Autonomous Resilient Headless Benchmark Runner"
     )
