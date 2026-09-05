@@ -1743,7 +1743,7 @@ async function callAnthropicMessages(apiKey, modelName, systemInstruction, messa
     modelUsed: modelName
   };
 }
-async function callGeminiWithResilience(ai, primaryModel, contents, systemInstruction, temperature, problem, agent, partnerName, history, currentTurn) {
+async function callGeminiWithResilience(ai, primaryModel, contents, systemInstruction, temperature, problem, agent, partnerName, history, currentTurn, requireLive = false) {
   const modelsToAttempt = [
     primaryModel || "gemini-3.6-flash",
     "gemini-3.6-flash",
@@ -1784,13 +1784,16 @@ async function callGeminiWithResilience(ai, primaryModel, contents, systemInstru
       }
     }
   }
+  if (requireLive) {
+    throw lastError || new Error("All live Gemini model attempts failed.");
+  }
   console.warn("[Gemini API Resilience] Live API calls exhausted under peak demand. Employing analytical fallback to maintain benchmark flow.");
   return generateSyntheticTurnFallback(problem, agent, partnerName, history, currentTurn);
 }
 app.post("/api/benchmark/generate-turn", async (req, res) => {
   const startTime = Date.now();
   try {
-    const { problem, agent, partnerName, history, currentTurn, isUncapped, maxTurnsPerAgent, apiKeys } = req.body;
+    const { problem, agent, partnerName, history, currentTurn, isUncapped, maxTurnsPerAgent, apiKeys, requireLive } = req.body;
     if (!problem || !agent) {
       return res.status(400).json({ error: "Missing required problem or agent data" });
     }
@@ -1951,6 +1954,9 @@ ${partnerName} and you should now discuss this problem and reach a definitive fi
       const openRouterKey = apiKeys?.openrouter || process.env.OPENROUTER_API_KEY;
       const targetModel = resolveOpenRouterModel(agent.model);
       if (!openRouterKey) {
+        if (requireLive) {
+          throw new Error(`No live OpenRouter API key configured for model ${targetModel}.`);
+        }
         console.warn(`[OpenRouter] Neither request nor server has OPENROUTER_API_KEY configured for model ${targetModel}. Engaging synthetic analytical fallback.`);
         const fallbackRes = generateSyntheticTurnFallback(problem, agent, partnerName, history || [], currentTurn || 0);
         responseText = fallbackRes.text;
@@ -2036,6 +2042,9 @@ ${partnerName} and you should now discuss this problem and reach a definitive fi
         });
       }
       if (!ai) {
+        if (requireLive) {
+          throw new Error("No live Gemini API key configured for this benchmark request.");
+        }
         console.warn("[Gemini API Resilience] Neither request nor server has GEMINI_API_KEY configured. Engaging synthetic analytical fallback to prevent benchmark halt.");
         const fallbackRes = generateSyntheticTurnFallback(problem, agent, partnerName, history || [], currentTurn || 0);
         responseText = fallbackRes.text;
@@ -2052,7 +2061,8 @@ ${partnerName} and you should now discuss this problem and reach a definitive fi
           agent,
           partnerName,
           history || [],
-          currentTurn || 0
+          currentTurn || 0,
+          Boolean(requireLive)
         );
         responseText = geminiRes.text;
         usage = geminiRes.usageMetadata;
