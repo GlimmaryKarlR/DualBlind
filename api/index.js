@@ -1238,12 +1238,11 @@ function getAllRuns() {
     return [];
   }
 }
-function saveRun(run) {
+async function saveRun(run) {
   if (!run || !run.id) return null;
   runsCache.set(String(run.id), run);
   persistCacheToDisk();
-  syncRunToFirestore(run).catch(() => {
-  });
+  await syncRunToFirestore(run);
   return run;
 }
 function batchSync(incomingRuns) {
@@ -1951,7 +1950,6 @@ ${partnerName} and you should now discuss this problem and reach a definitive fi
     } else if (provider === "openrouter" || apiKeys?.openrouter) {
       const openRouterKey = apiKeys?.openrouter || process.env.OPENROUTER_API_KEY;
       const targetModel = resolveOpenRouterModel(agent.model);
-
       if (!openRouterKey) {
         console.warn(`[OpenRouter] Neither request nor server has OPENROUTER_API_KEY configured for model ${targetModel}. Engaging synthetic analytical fallback.`);
         const fallbackRes = generateSyntheticTurnFallback(problem, agent, partnerName, history || [], currentTurn || 0);
@@ -2157,24 +2155,28 @@ app.post("/api/benchmark/verify", (req, res) => {
   }
 });
 app.post("/api/benchmark/save-run", (req, res) => {
-  try {
-    const record = req.body;
-    const saved = saveRun(record);
-    const all = getAllRuns();
-    res.json({ success: true, savedRecord: saved, totalCached: all.length });
-  } catch (error) {
-    res.status(500).json({ error: error.message || "Failed to save benchmark run" });
-  }
+  void (async () => {
+    try {
+      const record = req.body;
+      const saved = await saveRun(record);
+      const all = getAllRuns();
+      res.json({ success: true, savedRecord: saved, totalCached: all.length });
+    } catch (error) {
+      res.status(500).json({ error: error.message || "Failed to save benchmark run" });
+    }
+  })();
 });
 app.post("/api/leaderboard/save-run", (req, res) => {
-  try {
-    const record = req.body;
-    const saved = saveRun(record);
-    const all = getAllRuns();
-    res.json({ success: true, savedRecord: saved, totalCached: all.length });
-  } catch (error) {
-    res.status(500).json({ error: error.message || "Failed to save benchmark run" });
-  }
+  void (async () => {
+    try {
+      const record = req.body;
+      const saved = await saveRun(record);
+      const all = getAllRuns();
+      res.json({ success: true, savedRecord: saved, totalCached: all.length });
+    } catch (error) {
+      res.status(500).json({ error: error.message || "Failed to save benchmark run" });
+    }
+  })();
 });
 app.post("/api/leaderboard/sync-batch", (req, res) => {
   try {
