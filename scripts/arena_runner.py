@@ -213,12 +213,6 @@ VERIFIED_FREE_MODELS = [
         "family": "Qwen",
     },
     {
-        "model": "mistralai/mistral-small-24b-instruct-2501:free",
-        "provider": "openrouter",
-        "name": "Mistral Small 24B Free",
-        "family": "Mistral",
-    },
-    {
         "model": "mistralai/mistral-7b-instruct:free",
         "provider": "openrouter",
         "name": "Mistral 7B Free",
@@ -237,22 +231,10 @@ VERIFIED_FREE_MODELS = [
         "family": "Meta",
     },
     {
-        "model": "meta-llama/llama-3.2-3b-instruct:free",
-        "provider": "openrouter",
-        "name": "Llama 3.2 3B Free",
-        "family": "Meta",
-    },
-    {
         "model": "microsoft/phi-3-mini-128k-instruct:free",
         "provider": "openrouter",
         "name": "Phi 3 Mini Free",
         "family": "Microsoft",
-    },
-    {
-        "model": "cognitivecomputations/dolphin3.0-r1-mistral-24b:free",
-        "provider": "openrouter",
-        "name": "Dolphin 3.0 R1 Free",
-        "family": "Cognitive",
     },
     {
         "model": "openrouter/free",
@@ -338,6 +320,12 @@ def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dic
     # Filter available free pool according to provider filter
     provider_filter = getattr(config, "provider", "all").lower()
     pool = list(VERIFIED_FREE_MODELS)
+    has_google_key = bool(config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+    if not has_google_key:
+        pool = [m for m in pool if m["provider"] != "google"]
+        if provider_filter != "google":
+            # OpenRouter's live free router is stable; individual :free slugs retire frequently.
+            pool = [m for m in pool if m["model"] == "openrouter/free"]
     if provider_filter == "openrouter":
         pool = [m for m in pool if m["provider"] == "openrouter"]
     elif provider_filter == "google":
@@ -489,12 +477,12 @@ def run_trial(
         agent_label = "Agent Alpha" if is_agent_a else "Agent Beta"
 
         if config.verbose:
-            print(f"\n{BOLD}{agent_color}[Turn {turn_num+1}] {agent_label}:{RESET}", flush=True)
+            print(f"\n{BOLD}{agent_color}[Turn {turn_num+1}] {agent_label} ({model_used or current_agent['model']}):{RESET}", flush=True)
             print(content, flush=True)
         else:
             ans_tag = f" -> {GREEN}Claimed: [{extracted_answer}]{RESET}" if extracted_answer else ""
             preview = content.replace("\n", " ")[:90]
-            print(f"  {agent_color}[Turn {turn_num+1:02d}] {agent_label}:{RESET} {preview}...{ans_tag}", flush=True)
+            print(f"  {agent_color}[Turn {turn_num+1:02d}] {agent_label} ({model_used or current_agent['model']}):{RESET} {preview}...{ans_tag}", flush=True)
 
         turns_data.append({
             "turnNumber": turn_num + 1,
