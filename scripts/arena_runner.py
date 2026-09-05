@@ -164,14 +164,24 @@ def get_live_openrouter_free_models(api_key: str) -> list[dict]:
         with urllib.request.urlopen(req, timeout=30) as response:
             payload = json.loads(response.read().decode("utf-8"))
         models = []
+        excluded_terms = (
+            "agentic",
+            "thinkingmachines/",
+        )
         for item in payload.get("data", []):
             model_id = str(item.get("id", "")).strip()
+            model_name = str(item.get("name", ""))
+            model_description = str(item.get("description", ""))
             pricing = item.get("pricing") or {}
             if (
                 model_id
                 and model_id != "openrouter/free"
                 and str(pricing.get("prompt", "")) == "0"
                 and str(pricing.get("completion", "")) == "0"
+                and not any(
+                    term in f"{model_id} {model_name} {model_description}".lower()
+                    for term in excluded_terms
+                )
             ):
                 models.append({
                     "model": model_id,
@@ -883,6 +893,13 @@ def main():
                     except Exception as trial_err:
                         err_str = str(trial_err)
                         print(f"\n{YELLOW}[!] Warning: Trial #{trial_counter} encountered: {err_str}{RESET}")
+                        if "free-models-per-day" in err_str.lower():
+                            print(
+                                f"{RED}{BOLD}    [STOP] OpenRouter's account-wide free-model quota is exhausted. "
+                                f"Use a different key, wait for reset, or add credits.{RESET}"
+                            )
+                            RUNNING = False
+                            break
                         if "GEMINI_API_KEY" in err_str:
                             print(f"{YELLOW}    [→] Missing API Key: Pass --api-key YOUR_KEY or set export GEMINI_API_KEY=YOUR_KEY{RESET}")
                         print(f"{DIM}    Continuing to next problem in {args.delay}s...{RESET}")
