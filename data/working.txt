@@ -1,0 +1,1 @@
+python3 scripts/arena_runner.py --url https://dual-blind.vercel.app --verbose
