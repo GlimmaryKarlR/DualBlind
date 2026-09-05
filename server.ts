@@ -855,7 +855,7 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       responseText = orcaRes.text;
       usage = orcaRes.usageMetadata;
       modelUsed = orcaRes.modelUsed;
-    } else if (provider === 'openrouter' || apiKeys?.openrouter) {
+    } else if (provider === 'openrouter') {
       const openRouterKey = apiKeys?.openrouter || process.env.OPENROUTER_API_KEY;
       const targetModel = resolveOpenRouterModel(agent.model);
 
@@ -869,13 +869,29 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         usage = fallbackRes.usageMetadata;
         modelUsed = `${targetModel} (resilient-offline)`;
       } else {
-        const openRouterRes = await callOpenAICompatible(
-          'https://openrouter.ai/api/v1/chat/completions',
-          openRouterKey,
-          targetModel,
-          chatMessages,
-          agent.temperature ?? 0.4
-        );
+        let openRouterRes;
+        try {
+          openRouterRes = await callOpenAICompatible(
+            'https://openrouter.ai/api/v1/chat/completions',
+            openRouterKey,
+            targetModel,
+            chatMessages,
+            agent.temperature ?? 0.4
+          );
+        } catch (error: any) {
+          const message = error?.message || String(error);
+          const canUseFreeRouter = targetModel !== 'openrouter/free' &&
+            /no endpoints found|unavailable for free|model not found/i.test(message);
+          if (!canUseFreeRouter) throw error;
+          console.warn(`[OpenRouter] ${targetModel} is unavailable; retrying with openrouter/free.`);
+          openRouterRes = await callOpenAICompatible(
+            'https://openrouter.ai/api/v1/chat/completions',
+            openRouterKey,
+            'openrouter/free',
+            chatMessages,
+            agent.temperature ?? 0.4
+          );
+        }
         responseText = openRouterRes.text;
         usage = openRouterRes.usageMetadata;
         modelUsed = openRouterRes.modelUsed;
