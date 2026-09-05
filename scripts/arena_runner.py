@@ -148,6 +148,43 @@ def get_json(url: str, timeout: int = 30) -> dict:
         raise RuntimeError(f"HTTP {e.code}: {err_msg}") from None
 
 
+def get_live_openrouter_free_models(api_key: str) -> list[dict]:
+    """Load currently available zero-cost OpenRouter model IDs."""
+    if not api_key:
+        return []
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/models",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "DualBlind-Headless-Runner/1.0",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        models = []
+        for item in payload.get("data", []):
+            model_id = str(item.get("id", "")).strip()
+            pricing = item.get("pricing") or {}
+            if (
+                model_id
+                and model_id != "openrouter/free"
+                and str(pricing.get("prompt", "")) == "0"
+                and str(pricing.get("completion", "")) == "0"
+            ):
+                models.append({
+                    "model": model_id,
+                    "provider": "openrouter",
+                    "name": item.get("name") or model_id,
+                    "family": "OpenRouter live free",
+                })
+        return models
+    except Exception as error:
+        print(f"{YELLOW}[!] Could not load OpenRouter's live free model list: {error}{RESET}")
+        return []
+
+
 def extract_final_answer(text: str) -> str | None:
     """Extract consensus answer enclosed in FINAL ANSWER: [...] format."""
     import re
@@ -324,8 +361,13 @@ def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dic
     if not has_google_key:
         pool = [m for m in pool if m["provider"] != "google"]
         if provider_filter != "google":
-            # OpenRouter's live free router is stable; individual :free slugs retire frequently.
-            pool = [m for m in pool if m["model"] == "openrouter/free"]
+            live_models = get_live_openrouter_free_models(
+                config.openrouter_key or os.environ.get("OPENROUTER_API_KEY", "")
+            )
+            if len(live_models) >= 2:
+                pool = live_models
+            else:
+                pool = [m for m in pool if m["model"] == "openrouter/free"]
     if provider_filter == "openrouter":
         pool = [m for m in pool if m["provider"] == "openrouter"]
     elif provider_filter == "google":
