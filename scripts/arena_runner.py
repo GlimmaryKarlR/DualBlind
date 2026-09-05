@@ -460,11 +460,18 @@ def run_trial(
             "isUncapped": config.uncapped,
             "maxTurnsPerAgent": config.max_turns,
             "apiKeys": api_keys,
+            "requireLive": True,
         }
 
         turn_start = time.time()
         res = post_json(f"{base_url}/api/benchmark/generate-turn", turn_payload, timeout=60)
         turn_latency = int((time.time() - turn_start) * 1000)
+
+        model_used = str(res.get("modelUsed", ""))
+        if any(marker in model_used.lower() for marker in ("synthetic", "resilient", "offline")):
+            raise RuntimeError(
+                f"Server returned a non-live inference response ({model_used or 'unknown model'}); refusing to record this trial."
+            )
 
         content = res.get("content", "")
         extracted_answer = res.get("extractedFinalAnswer") or extract_final_answer(content)
@@ -494,6 +501,7 @@ def run_trial(
             "agentId": current_agent_id,
             "agentName": current_agent["name"],
             "content": content,
+            "modelUsed": model_used,
             "extractedFinalAnswer": extracted_answer,
             "inputTokens": input_tokens,
             "outputTokens": output_tokens,
