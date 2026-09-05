@@ -1088,26 +1088,30 @@ app.post('/api/benchmark/verify', (req, res) => {
 
 // Save a benchmark run into the records store and persistent cache
 app.post('/api/benchmark/save-run', (req, res) => {
-  try {
+  void (async () => {
+    try {
     const record = req.body;
-    const saved = saveRun(record);
+    const saved = await saveRun(record);
     const all = getAllRuns();
     res.json({ success: true, savedRecord: saved, totalCached: all.length });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to save benchmark run' });
-  }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to save benchmark run' });
+    }
+  })();
 });
 
 // Alias for save-run
 app.post('/api/leaderboard/save-run', (req, res) => {
-  try {
+  void (async () => {
+    try {
     const record = req.body;
-    const saved = saveRun(record);
+    const saved = await saveRun(record);
     const all = getAllRuns();
     res.json({ success: true, savedRecord: saved, totalCached: all.length });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to save benchmark run' });
-  }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to save benchmark run' });
+    }
+  })();
 });
 
 // Batch sync endpoint: client sends local runs, server merges with persistent cache

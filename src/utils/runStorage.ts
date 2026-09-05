@@ -10,13 +10,12 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 
-const STORAGE_KEY = 'dualblind_benchmark_runs_v1';
 const FIRESTORE_COLLECTION = 'benchmark_runs';
 
 export const SEED_RUNS: BenchmarkRunRecord[] = HISTORICAL_BENCHMARK_RUNS;
 
 /**
- * Normalizes any run record (Firestore document, local cache, or server response)
+ * Normalizes any run record (Firestore document or server response)
  * into a fully populated, type-safe BenchmarkRunRecord.
  */
 export function normalizeRunRecord(raw: any, fallbackId?: string): BenchmarkRunRecord | null {
@@ -90,7 +89,7 @@ export function mergeAndDeduplicateRuns(
   fallback: BenchmarkRunRecord[] = []
 ): BenchmarkRunRecord[] {
   const map = new Map<string, BenchmarkRunRecord>();
-  // Fallbacks first (e.g. local cache)
+  // Fallbacks first so the primary source can overwrite duplicate IDs.
   for (const raw of fallback) {
     const item = normalizeRunRecord(raw);
     if (item) {
@@ -114,24 +113,10 @@ export function mergeAndDeduplicateRuns(
 }
 
 /**
- * Get runs cached locally in browser
+ * Browser storage is intentionally not used as a source of benchmark data.
  */
 export function getStoredRuns(): BenchmarkRunRecord[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return mergeAndDeduplicateRuns(parsed, []);
-    }
-    return [];
-  } catch (e) {
-    console.warn('Failed to load runs from localStorage:', e);
-    return [];
-  }
+  return [];
 }
 
 /**
@@ -142,42 +127,12 @@ function sanitizeForFirestore<T>(data: T): T {
 }
 
 /**
- * Save run record universally (to Server in-memory/disk cache, local storage, and Firestore)
+ * Save a run to the server transport and Firestore.
  */
 export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<BenchmarkRunRecord[]> {
   const normalized = normalizeRunRecord(record) || record;
 
-  // 1. Immediately cache locally
-  let updatedLocal: BenchmarkRunRecord[] = [normalized];
-  try {
-    const current = getStoredRuns();
-    updatedLocal = mergeAndDeduplicateRuns([normalized], current);
-    try {
-      // Store lightweight cache without transcripts to prevent QuotaExceededError
-      const lightCache = updatedLocal.slice(0, 2500).map((r) => {
-        const { turns, ...rest } = r;
-        return { ...rest, turns: [] };
-      });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
-    } catch {
-      // Ignore quota exceeded error on client
-    }
-  } catch (e) {
-    console.warn('Local storage cache update failed:', e);
-  }
-
-  // 2. Persist to Backend Server In-Memory Cache & Disk (0 Firestore reads)
-  try {
-    fetch('/api/leaderboard/save-run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(normalized),
-    }).catch(() => {});
-  } catch {
-    // Non-blocking
-  }
-
-  // 3. Background persist to Firestore Universal Database (Uses Write quota, not Read quota)
+  // Persist to Firestore as the source of truth.
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -193,7 +148,7 @@ export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<Benc
     }
   }
 
-  return updatedLocal;
+  return fetchUniversalLeaderboard();
 }
 
 /**
@@ -231,51 +186,27 @@ export function saveRunToStorage(record: BenchmarkRunRecord): BenchmarkRunRecord
 }
 
 /**
- * Sync local client runs to the server persistent cache
- */
-export async function syncLocalRunsToServer(): Promise<BenchmarkRunRecord[]> {
-  const localRuns = getStoredRuns();
-  try {
-    const res = await fetch('/api/leaderboard/sync-batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runs: localRuns }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && Array.isArray(data.runs) && data.runs.length > 0) {
-        const normalizedList: BenchmarkRunRecord[] = [];
-        for (const item of data.runs) {
-          const norm = normalizeRunRecord(item);
-          if (norm) normalizedList.push(norm);
-        }
-        // Update local cache
-        try {
-          const lightCache = normalizedList.slice(0, 2500).map((r) => {
-            const { turns, ...rest } = r;
-            return { ...rest, turns: [] };
-          });
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
-        } catch {
-          // Ignore
-        }
-        return normalizedList;
-      }
-    }
-  } catch (err) {
-    console.warn('[Leaderboard] Local batch sync to server notice:', err);
-  }
-
-  return localRuns;
-}
-
-/**
- * Fetch all universal runs using server in-memory cache first (0 Firestore read quota consumed)
+ * Fetch all universal runs from Firestore. The server endpoint is a secondary
+ * transport for deployments where the browser cannot reach Firestore directly.
  */
 export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]> {
-  const localCached = getStoredRuns();
+  // Primary: Firestore source of truth.
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      const snapshot = await getDocs(collection(db, FIRESTORE_COLLECTION));
+      const cloudRuns: BenchmarkRunRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
+        if (normalized) cloudRuns.push(normalized);
+      });
+      return cloudRuns.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    } catch (error: any) {
+      console.warn('[Universal Leaderboard] Firestore fetch notice:', error?.message || error);
+    }
+  }
 
-  // 1. Primary: Server-side in-memory cache
+  // Secondary: server transport backed by Firestore.
   try {
     const res = await fetch('/api/leaderboard/runs');
     if (res.ok) {
@@ -288,17 +219,7 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
             const normalized = normalizeRunRecord(item);
             if (normalized) cloudRuns.push(normalized);
           }
-          const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
-          try {
-            const lightCache = merged.slice(0, 2500).map((r) => {
-              const { turns, ...rest } = r;
-              return { ...rest, turns: [] };
-            });
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
-          } catch {
-            // Quota safe
-          }
-          return merged;
+          return cloudRuns;
         }
       }
     }
@@ -306,67 +227,7 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
     // Server API unavailable or starting
   }
 
-  // 2. Secondary: Static CDN cache fallback (/data/leaderboard_cache.json)
-  try {
-    const resStatic = await fetch('/data/leaderboard_cache.json');
-    if (resStatic.ok) {
-      const dataStatic = await resStatic.json();
-      if (Array.isArray(dataStatic) && dataStatic.length > 0) {
-        const staticRuns: BenchmarkRunRecord[] = [];
-        for (const item of dataStatic) {
-          const normalized = normalizeRunRecord(item);
-          if (normalized) staticRuns.push(normalized);
-        }
-        const merged = mergeAndDeduplicateRuns(staticRuns, localCached);
-        try {
-          const lightCache = merged.slice(0, 2500).map((r) => {
-            const { turns, ...rest } = r;
-            return { ...rest, turns: [] };
-          });
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
-        } catch {
-          // Quota safe
-        }
-        return merged;
-      }
-    }
-  } catch {
-    // Static fallback notice
-  }
-
-  // 3. Tertiary: Direct Firestore fetch
-  const db = getFirestoreDb();
-  if (db) {
-    try {
-      const runsRef = collection(db, FIRESTORE_COLLECTION);
-      const snapshot = await getDocs(runsRef);
-
-      if (!snapshot.empty) {
-        const cloudRuns: BenchmarkRunRecord[] = [];
-        snapshot.forEach((docSnap) => {
-          const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
-          if (normalized) cloudRuns.push(normalized);
-        });
-
-        const merged = mergeAndDeduplicateRuns(cloudRuns, localCached);
-        try {
-          const lightCache = merged.slice(0, 2500).map((r) => {
-            const { turns, ...rest } = r;
-            return { ...rest, turns: [] };
-          });
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightCache));
-        } catch {
-          // Quota safe
-        }
-        return merged;
-      }
-    } catch (error: any) {
-      console.warn('[Universal Leaderboard] Cloud direct fetch notice:', error?.message || error);
-    }
-  }
-
-  // 4. Final Fallback: Local browser storage
-  return localCached;
+  return [];
 }
 
 /**

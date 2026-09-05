@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/index.js": {
-      "includeFiles": "{data/**,public/data/**}"
+      "includeFiles": "{data/**,public/data/**,firebase-applet-config.json}"
     }
   },
   "rewrites": [

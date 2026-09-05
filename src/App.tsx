@@ -18,7 +18,6 @@ import {
   saveRunUniversal,
   subscribeUniversalLeaderboard,
   fetchUniversalLeaderboard,
-  syncLocalRunsToServer,
   normalizeRunRecord,
 } from './utils/runStorage';
 import { generateBenchmarkTurnHybrid } from './utils/hybridTurnGenerator';
@@ -159,14 +158,7 @@ export default function App() {
       setRunsHistory(cached);
     }
 
-    // 2. Fetch server-cached leaderboard and sync any local client runs to server
-    syncLocalRunsToServer().then((runs) => {
-      if (Array.isArray(runs) && runs.length > 0) {
-        setRunsHistory(runs);
-      }
-    });
-
-    // 3. Lightweight poll subscription (0 Firestore reads)
+    // Load the Firebase-backed leaderboard and keep it refreshed.
     const unsubscribe = subscribeUniversalLeaderboard((runs) => {
       if (Array.isArray(runs) && runs.length > 0) {
         setRunsHistory(runs);
@@ -1233,7 +1225,7 @@ export default function App() {
 
     try {
       setIsRunSaved(true);
-      // Save universally (Firestore cloud database + local storage cache)
+      // Save universally to the Firebase-backed leaderboard.
       const updated = await saveRunUniversal(record);
       setRunsHistory(updated);
 

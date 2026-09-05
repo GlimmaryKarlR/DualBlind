@@ -125,12 +125,11 @@ export function getAllRuns(): any[] {
   }
 }
 
-export function saveRun(run: any): any {
+export async function saveRun(run: any): Promise<any> {
   if (!run || !run.id) return null;
   runsCache.set(String(run.id), run);
   persistCacheToDisk();
-  // Asynchronously sync to Firestore without blocking response
-  syncRunToFirestore(run).catch(() => {});
+  await syncRunToFirestore(run);
   return run;
 }
 
