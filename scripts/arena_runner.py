@@ -99,6 +99,35 @@ def load_env_candidates():
 load_env_candidates()
 
 
+def get_openrouter_keys(config: argparse.Namespace) -> list[str]:
+    """Return configured OpenRouter keys in rotation order."""
+    cli_keys = getattr(config, "openrouter_keys", None) or []
+    env_keys = os.environ.get("OPENROUTER_API_KEYS", "")
+    keys = cli_keys + [key.strip() for key in env_keys.split(",") if key.strip()]
+    if not keys:
+        legacy_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+        if legacy_key:
+            keys.append(legacy_key)
+    return list(dict.fromkeys(key for key in keys if key))
+
+
+def is_openrouter_rotation_error(error: Exception) -> bool:
+    """Identify errors that commonly mean an OpenRouter key is rate-limited or exhausted."""
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "http 429",
+            "rate limit",
+            "rate-limit",
+            "quota",
+            "credits",
+            "insufficient balance",
+            "free-models-per-day",
+        )
+    )
+
+
 def post_json(url: str, payload: dict, timeout: int = 120) -> dict:
     """Send a POST request with JSON body, extracting clear error bodies if HTTPError occurs."""
     data_bytes = json.dumps(payload).encode("utf-8")
@@ -371,9 +400,8 @@ def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dic
     if not has_google_key:
         pool = [m for m in pool if m["provider"] != "google"]
         if provider_filter != "google":
-            live_models = get_live_openrouter_free_models(
-                config.openrouter_key or os.environ.get("OPENROUTER_API_KEY", "")
-            )
+            openrouter_keys = get_openrouter_keys(config)
+            live_models = get_live_openrouter_free_models(openrouter_keys[0] if openrouter_keys else "")
             if len(live_models) >= 2:
                 pool = live_models
             else:
@@ -448,9 +476,10 @@ def run_trial(
     active_google_key = config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if active_google_key:
         api_keys["google"] = active_google_key
-    active_openrouter_key = config.openrouter_key or os.environ.get("OPENROUTER_API_KEY")
-    if active_openrouter_key:
-        api_keys["openrouter"] = active_openrouter_key
+    openrouter_keys = get_openrouter_keys(config)
+    openrouter_key_index = 0
+    if openrouter_keys:
+        api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
     if config.openai_key or os.environ.get("OPENAI_API_KEY"):
         api_keys["openai"] = config.openai_key or os.environ.get("OPENAI_API_KEY")
     if config.anthropic_key or os.environ.get("ANTHROPIC_API_KEY"):
@@ -504,7 +533,20 @@ def run_trial(
         }
 
         turn_start = time.time()
-        res = post_json(f"{base_url}/api/benchmark/generate-turn", turn_payload, timeout=60)
+        while True:
+            try:
+                res = post_json(f"{base_url}/api/benchmark/generate-turn", turn_payload, timeout=60)
+                break
+            except Exception as turn_error:
+                next_key_index = openrouter_key_index + 1
+                if not openrouter_keys or next_key_index >= len(openrouter_keys) or not is_openrouter_rotation_error(turn_error):
+                    raise
+                openrouter_key_index = next_key_index
+                api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
+                turn_payload["apiKeys"] = api_keys
+                print(
+                    f"{YELLOW}[!] OpenRouter key {openrouter_key_index} selected after a quota/rate-limit error. Retrying turn...{RESET}"
+                )
         turn_latency = int((time.time() - turn_start) * 1000)
 
         model_used = str(res.get("modelUsed", ""))
@@ -809,12 +851,18 @@ def main():
     )
     parser.add_argument("--url", default="http://localhost:3000", help="Base URL of DualBlind server (default: http://localhost:3000)")
     parser.add_argument("--api-key", "--google-key", dest="google_key", default=None, help="Gemini API Key (default: GEMINI_API_KEY from environment or .env)")
-    parser.add_argument("--openrouter-key", default=None, help="OpenRouter API Key (default: OPENROUTER_API_KEY from environment or .env)")
+    parser.add_argument(
+        "--openrouter-key",
+        dest="openrouter_keys",
+        action="append",
+        default=None,
+        help="OpenRouter API key; repeat for rotation (or use OPENROUTER_API_KEYS, comma-separated)",
+    )
     parser.add_argument("--openai-key", default=None, help="OpenAI API Key (default: OPENAI_API_KEY from environment or .env)")
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")
     parser.add_argument("--deepseek-key", default=None, help="DeepSeek API Key (default: DEEPSEEK_API_KEY from environment or .env)")
     parser.add_argument("--provider", default="all", choices=["all", "openrouter", "google"], help="Provider pool: all (mix OpenRouter & Google), openrouter, or google (default: all)")
-    parser.add_argument("--force-free", dest="force_free", action="store_true", default=True, help="Force 100% free models only (default: True)")
+    parser.add_argument("--force-free", dest="force_free", action="store_true", default=True, help="Force 100%% free models only (default: True)")
     parser.add_argument("--allow-paid", dest="force_free", action="store_false", help="Allow paid non-free models")
     parser.add_argument("--random-models", dest="random_models", action="store_true", default=True, help="Use multiple models at random for each trial (default: True)")
     parser.add_argument("--fixed-models", dest="random_models", action="store_false", help="Disable random selection and stick to model-a / model-b")
@@ -822,7 +870,7 @@ def main():
     parser.add_argument("--model-b", default=None, help="Specific model for Agent Beta (default: random free model)")
     parser.add_argument("--provider-a", default=None, help="Provider for Agent Alpha: google, openrouter, openai, anthropic")
     parser.add_argument("--provider-b", default=None, help="Provider for Agent Beta: google, openrouter, openai, anthropic")
-    parser.add_argument("--list-free-models", action="store_true", help="List all verified 100% free models across OpenRouter & Google and exit")
+    parser.add_argument("--list-free-models", action="store_true", help="List all verified 100%% free models across OpenRouter & Google and exit")
     parser.add_argument("--suite", default="all", help="Benchmark suite filter (e.g. gpqa_diamond, swe_bench, math_aime, hle, all)")
     parser.add_argument("--max-turns", type=int, default=5, help="Maximum turns per agent (default: 5)")
     parser.add_argument("--uncapped", action="store_true", help="Run in uncapped mode until natural consensus or loop cap")
@@ -850,7 +898,7 @@ def main():
 
     # Detect API keys
     resolved_google_key = args.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    resolved_openrouter_key = args.openrouter_key or os.environ.get("OPENROUTER_API_KEY")
+    resolved_openrouter_keys = get_openrouter_keys(args)
 
     print(f"{BOLD}{GREEN}======================================================{RESET}")
     print(f"{BOLD}{GREEN}   DualBlind AI Arena - Autonomous Headless Runner   {RESET}")
@@ -863,12 +911,16 @@ def main():
     print(f"Protocol:        {'Uncapped Deliberation' if args.uncapped else f'Max {args.max_turns} turns'}")
     print(f"Keys Detected:")
     print(f"  • Google (Gemini):     {GREEN}✓ Loaded (Active){RESET}" if resolved_google_key else f"  • Google (Gemini):     {YELLOW}○ None detected in environment{RESET}")
-    print(f"  • OpenRouter (Universal): {GREEN}✓ Loaded (Active){RESET}" if resolved_openrouter_key else f"  • OpenRouter (Universal): {YELLOW}○ None detected (Free tier / server fallback active){RESET}")
+    print(
+        f"  • OpenRouter (Universal): {GREEN}✓ Loaded ({len(resolved_openrouter_keys)} key{'s' if len(resolved_openrouter_keys) != 1 else ''}, rotating on quota/rate limits){RESET}"
+        if resolved_openrouter_keys
+        else f"  • OpenRouter (Universal): {YELLOW}○ None detected (Free tier / server fallback active){RESET}"
+    )
     print(f"Self-Healing:    Active (Auto-restart on any fatal network or API drop)")
     print(f"Local Backup:    arena_runs_local.jsonl")
     print(f"{GREEN}------------------------------------------------------{RESET}\n")
 
-    if not resolved_google_key and not resolved_openrouter_key and "localhost" not in args.url:
+    if not resolved_google_key and not resolved_openrouter_keys and "localhost" not in args.url:
         print(f"{YELLOW}[i] Pro-tip for Remote Server runs:{RESET}")
         print(f"    Pass your key directly on the CLI:")
         print(f"    {CYAN}python3 arena_runner.py --url {args.url} --openrouter-key YOUR_OPENROUTER_KEY{RESET}")
@@ -894,11 +946,8 @@ def main():
                     except Exception as trial_err:
                         err_str = str(trial_err)
                         print(f"\n{YELLOW}[!] Warning: Trial #{trial_counter} encountered: {err_str}{RESET}")
-                        if "free-models-per-day" in err_str.lower():
-                            print(
-                                f"{RED}{BOLD}    [STOP] OpenRouter's account-wide free-model quota is exhausted. "
-                                f"Use a different key, wait for reset, or add credits.{RESET}"
-                            )
+                        if "free-models-per-day" in err_str.lower() and len(resolved_openrouter_keys) <= 1:
+                            print(f"{RED}{BOLD}    [STOP] OpenRouter's free-model quota is exhausted. Use a different key, wait for reset, or add credits.{RESET}")
                             RUNNING = False
                             break
                         if "GEMINI_API_KEY" in err_str:

@@ -46,7 +46,20 @@ python3 scripts/arena_runner.py --count 50 --verbose
 
 # Run continuously as a background daemon
 nohup python3 scripts/arena_runner.py > arena_runner.log 2>&1 &
+
+# Rotate through multiple OpenRouter keys when a key is rate-limited or exhausted
+python3 scripts/arena_runner.py \
+   --url https://dual-blind.vercel.app \
+   --api-key "$GEMINI_API_KEY" \
+   --openrouter-key "$OPENROUTER_KEY_1" \
+   --openrouter-key "$OPENROUTER_KEY_2" \
+   --verbose
 ```
+
+OpenRouter keys can also be supplied through `OPENROUTER_API_KEYS` as a comma-separated
+environment variable. The runner retries the current turn with the next key when it
+receives a quota or rate-limit error. The existing `OPENROUTER_API_KEY` variable and
+single `--openrouter-key` usage remain supported.
 
 ### Self-Healing & Auto-Restart Watchdog
 - **Per-Trial Error Isolation**: If a single turn encounters a transient 503/429 error, the runner logs the notice, waits with backoff, and safely continues to the next challenge without halting.
