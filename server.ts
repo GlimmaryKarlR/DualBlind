@@ -488,7 +488,9 @@ async function callOpenAICompatible(
   apiKey: string,
   modelName: string,
   messages: Array<{ role: string; content: string }>,
-  temperature: number
+  temperature: number,
+  maxTokens: number = 2048,
+  retryCount: number = 0
 ): Promise<{ text: string; usageMetadata: any; modelUsed: string }> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -507,12 +509,38 @@ async function callOpenAICompatible(
       model: modelName,
       messages,
       temperature: Math.min(1.0, Math.max(0.0, temperature ?? 0.4)),
+      max_tokens: maxTokens,
     }),
   });
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`Provider API error (${res.status}): ${errorText.substring(0, 200)}`);
+    let errorMessage = errorText.substring(0, 200);
+
+    try {
+      const parsed = JSON.parse(errorText);
+      errorMessage = parsed?.error?.message || parsed?.message || errorMessage;
+    } catch {
+      // ignore parse failure and use raw text
+    }
+
+    if (
+      endpointUrl.includes('openrouter.ai') &&
+      retryCount < 2 &&
+      /can only afford|requires more credits|insufficient credits/i.test(errorMessage)
+    ) {
+      const affordMatch = errorMessage.match(/can only afford\s+(\d+)/i);
+      const affordableTokens = affordMatch ? parseInt(affordMatch[1], 10) : 0;
+      if (affordableTokens > 80) {
+        const reducedTokens = Math.max(80, Math.min(maxTokens, affordableTokens - 30));
+        return callOpenAICompatible(endpointUrl, apiKey, modelName, messages, temperature, reducedTokens, retryCount + 1);
+      }
+      if (maxTokens > 256) {
+        return callOpenAICompatible(endpointUrl, apiKey, modelName, messages, temperature, 256, retryCount + 1);
+      }
+    }
+
+    throw new Error(`Provider API error (${res.status}): ${errorMessage}`);
   }
 
   const data: any = await res.json();

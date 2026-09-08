@@ -1,0 +1,11 @@
+for k in $(grep -E '^(OPENROUTER_API_KEY|OPENROUTER_API_KEY_[0-9]+)=' .env.local | cut -d= -f2 | tr ',' '\n' | sed '/^$/d'); do
+  echo "Testing key: ${k:0:12}..."
+  curl -sS -X POST https://openrouter.ai/api/v1/chat/completions \
+    -H "Authorization: Bearer $k" \
+    -H "Content-Type: application/json" \
+    -H "HTTP-Referer: https://localhost" \
+    -H "X-Title: DualBlind-check" \
+    -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Reply with only OK"}],"max_tokens":5}'
+  echo
+  echo "---"
+done

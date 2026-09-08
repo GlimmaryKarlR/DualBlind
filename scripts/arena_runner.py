@@ -111,6 +111,71 @@ def get_openrouter_keys(config: argparse.Namespace) -> list[str]:
     return list(dict.fromkeys(key for key in keys if key))
 
 
+def probe_openrouter_key(api_key: str) -> tuple[bool, str]:
+    """Return whether an OpenRouter key can actually complete a minimal live request."""
+    if not api_key:
+        return False, "empty key"
+
+    payload = {
+        "model": "openai/gpt-4o-mini",
+        "messages": [{"role": "user", "content": "Reply with only OK"}],
+        "max_tokens": 5,
+    }
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://localhost",
+            "X-Title": "DualBlind startup check",
+            "User-Agent": "DualBlind-Headless-Runner/1.0",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=25) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            parsed = json.loads(body)
+            choices = parsed.get("choices") or []
+            if response.status == 200 and choices:
+                return True, "working"
+            return False, "unexpected response"
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", errors="replace")
+            parsed = json.loads(body)
+            err_msg = parsed.get("error") or parsed.get("message") or body
+            if isinstance(err_msg, dict):
+                err_msg = err_msg.get("message") or str(err_msg)
+            return False, str(err_msg)[:220]
+        except Exception:
+            return False, f"HTTP {e.code}: {str(e)}"[:220]
+    except Exception as e:
+        return False, str(e)[:220]
+
+
+def prioritize_openrouter_keys(keys: list[str]) -> list[str]:
+    """Reorder keys so working credits-backed keys are used before blocked/expired ones."""
+    if not keys:
+        return []
+
+    ordered: list[str] = []
+    failed: list[str] = []
+
+    for key in keys:
+        ok, reason = probe_openrouter_key(key)
+        if ok:
+            ordered.append(key)
+            print(f"{GREEN}✓ OpenRouter key accepted: {key[:12]}...{RESET}")
+        else:
+            failed.append((key, reason))
+            print(f"{YELLOW}⚠ OpenRouter key skipped: {key[:12]}... ({reason}){RESET}")
+
+    return ordered + [key for key, _ in failed if key not in ordered]
+
+
 def is_openrouter_rotation_error(error: Exception) -> bool:
     """Identify errors that commonly mean an OpenRouter key is rate-limited or exhausted."""
     message = str(error).lower()
@@ -923,7 +988,10 @@ def main():
 
     # Detect API keys
     resolved_google_key = args.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    resolved_openrouter_keys = get_openrouter_keys(args)
+    resolved_openrouter_keys = prioritize_openrouter_keys(get_openrouter_keys(args))
+    if resolved_openrouter_keys:
+        os.environ["OPENROUTER_API_KEY"] = resolved_openrouter_keys[0]
+        os.environ["OPENROUTER_API_KEYS"] = ",".join(resolved_openrouter_keys)
 
     print(f"{BOLD}{GREEN}======================================================{RESET}")
     print(f"{BOLD}{GREEN}   DualBlind AI Arena - Autonomous Headless Runner   {RESET}")

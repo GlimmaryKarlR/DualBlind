@@ -1650,7 +1650,7 @@ ${reasoning}
   if (typeof data.text === "string" && data.text.trim()) return data.text;
   return "";
 }
-async function callOpenAICompatible(endpointUrl, apiKey, modelName, messages, temperature) {
+async function callOpenAICompatible(endpointUrl, apiKey, modelName, messages, temperature, maxTokens = 2048, retryCount = 0) {
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${apiKey}`
@@ -1665,12 +1665,31 @@ async function callOpenAICompatible(endpointUrl, apiKey, modelName, messages, te
     body: JSON.stringify({
       model: modelName,
       messages,
-      temperature: Math.min(1, Math.max(0, temperature ?? 0.4))
+      temperature: Math.min(1, Math.max(0, temperature ?? 0.4)),
+      max_tokens: maxTokens
     })
   });
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`Provider API error (${res.status}): ${errorText.substring(0, 200)}`);
+    let errorMessage = errorText.substring(0, 200);
+    try {
+      const parsed = JSON.parse(errorText);
+      errorMessage = parsed?.error?.message || parsed?.message || errorMessage;
+    } catch {
+      // ignore parse failure
+    }
+    if (endpointUrl.includes("openrouter.ai") && retryCount < 2 && /can only afford|requires more credits|insufficient credits/i.test(errorMessage)) {
+      const affordMatch = errorMessage.match(/can only afford\s+(\d+)/i);
+      const affordableTokens = affordMatch ? Number.parseInt(affordMatch[1], 10) : 0;
+      if (affordableTokens > 80) {
+        const reducedTokens = Math.max(80, Math.min(maxTokens, affordableTokens - 30));
+        return callOpenAICompatible(endpointUrl, apiKey, modelName, messages, temperature, reducedTokens, retryCount + 1);
+      }
+      if (maxTokens > 256) {
+        return callOpenAICompatible(endpointUrl, apiKey, modelName, messages, temperature, 256, retryCount + 1);
+      }
+    }
+    throw new Error(`Provider API error (${res.status}): ${errorMessage}`);
   }
   const data = await res.json();
   const text = extractTextFromOpenAIResponse(data);
