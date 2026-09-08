@@ -356,8 +356,23 @@ def is_model_free(model_name: str, provider: str = "") -> bool:
     return False
 
 
+PAID_MODEL_POOL = [
+    {"model": "gemini-2.5-flash", "provider": "google", "name": "Gemini 2.5 Flash", "family": "Google"},
+    {"model": "gemini-2.5-pro", "provider": "google", "name": "Gemini 2.5 Pro", "family": "Google"},
+    {"model": "gemini-1.5-flash", "provider": "google", "name": "Gemini 1.5 Flash", "family": "Google"},
+    {"model": "google/gemini-2.5-flash", "provider": "openrouter", "name": "Gemini 2.5 Flash (OpenRouter)", "family": "Google"},
+    {"model": "google/gemini-2.5-pro", "provider": "openrouter", "name": "Gemini 2.5 Pro (OpenRouter)", "family": "Google"},
+    {"model": "deepseek/deepseek-chat-v3-0324", "provider": "openrouter", "name": "DeepSeek V3 Chat", "family": "DeepSeek"},
+    {"model": "deepseek/deepseek-r1", "provider": "openrouter", "name": "DeepSeek R1", "family": "DeepSeek"},
+    {"model": "qwen/qwen-2.5-72b-instruct", "provider": "openrouter", "name": "Qwen 2.5 72B Instruct", "family": "Qwen"},
+    {"model": "openai/gpt-4o-mini", "provider": "openrouter", "name": "GPT-4o Mini", "family": "OpenAI"},
+    {"model": "anthropic/claude-3.5-sonnet", "provider": "openrouter", "name": "Claude 3.5 Sonnet", "family": "Anthropic"},
+    {"model": "meta-llama/llama-3.3-70b-instruct", "provider": "openrouter", "name": "Llama 3.3 70B Instruct", "family": "Meta"},
+]
+
+
 def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dict, dict]:
-    """Select Agent Alpha and Agent Beta for this trial, enforcing free models and random pairing."""
+    """Select Agent Alpha and Agent Beta for this trial, honoring the free-only flag and random pairing."""
     # Check if user explicitly requested fixed models
     has_custom = bool(config.model_a and config.model_b)
     use_random = getattr(config, "random_models", True)
@@ -393,26 +408,35 @@ def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dic
         }
         return agent_a, agent_b
 
-    # Filter available free pool according to provider filter
+    # Filter available model pool according to provider and paid/free policy
     provider_filter = getattr(config, "provider", "all").lower()
-    pool = list(VERIFIED_FREE_MODELS)
-    has_google_key = bool(config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
-    if not has_google_key:
-        pool = [m for m in pool if m["provider"] != "google"]
-        if provider_filter != "google":
-            openrouter_keys = get_openrouter_keys(config)
-            live_models = get_live_openrouter_free_models(openrouter_keys[0] if openrouter_keys else "")
-            if len(live_models) >= 2:
-                pool = live_models
-            else:
-                pool = [m for m in pool if m["model"] == "openrouter/free"]
+    force_free = bool(getattr(config, "force_free", True))
+
+    if force_free:
+        pool = list(VERIFIED_FREE_MODELS)
+        has_google_key = bool(config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        if not has_google_key:
+            pool = [m for m in pool if m["provider"] != "google"]
+            if provider_filter != "google":
+                openrouter_keys = get_openrouter_keys(config)
+                live_models = get_live_openrouter_free_models(openrouter_keys[0] if openrouter_keys else "")
+                if len(live_models) >= 2:
+                    pool = live_models
+                else:
+                    pool = [m for m in pool if m["model"] == "openrouter/free"]
+    else:
+        pool = list(PAID_MODEL_POOL)
+        has_google_key = bool(config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        if not has_google_key and provider_filter != "google":
+            pool = [m for m in pool if m["provider"] != "google"]
+
     if provider_filter == "openrouter":
         pool = [m for m in pool if m["provider"] == "openrouter"]
     elif provider_filter == "google":
         pool = [m for m in pool if m["provider"] == "google"]
 
     if not pool:
-        pool = list(VERIFIED_FREE_MODELS)
+        pool = list(VERIFIED_FREE_MODELS if force_free else PAID_MODEL_POOL)
 
     # Pick Agent A
     spec_a = random.choice(pool)
@@ -463,12 +487,13 @@ def run_trial(
     if not agent_a or not agent_b:
         agent_a, agent_b = select_trial_agents(config, trial_num)
 
+    tier_label = "100% Free Models Only" if bool(getattr(config, "force_free", True)) else "Paid & Free Models Allowed"
     print(f"\n{BOLD}{CYAN}{'='*80}{RESET}")
     print(f"{BOLD}{CYAN}[Trial #{trial_num}] {problem_title} ({str(suite_id).upper()}){RESET}")
     print(f"{DIM}Question: {problem.get('question', '')[:160]}...{RESET}")
     print(f"{BLUE}Agent Alpha:{RESET} {BOLD}{agent_a['name']}{RESET} [{agent_a['model']}] ({agent_a['provider']})")
     print(f"{MAGENTA}Agent Beta: {RESET} {BOLD}{agent_b['name']}{RESET} [{agent_b['model']}] ({agent_b['provider']})")
-    print(f"{DIM}Tier: 100% Free Models Only  |  Protocol: {'Uncapped' if config.uncapped else f'Max {config.max_turns} turns'}{RESET}")
+    print(f"{DIM}Tier: {tier_label}  |  Protocol: {'Uncapped' if config.uncapped else f'Max {config.max_turns} turns'}{RESET}")
     print(f"{CYAN}{'-'*80}{RESET}")
 
     # Gather API keys from CLI arguments, environment variables, or .env files
