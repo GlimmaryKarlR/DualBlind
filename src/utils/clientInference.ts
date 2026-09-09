@@ -625,6 +625,32 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
     inputTokens = res.inputTokens;
     outputTokens = res.outputTokens;
     modelUsed = res.modelUsed;
+  } else if (provider === 'huggingface' && apiKeys.huggingface) {
+    const targetModel = agent.model || 'meta-llama/Llama-3.3-70B-Instruct';
+    const res = await callOpenAICompatibleDirect(
+      'https://router.huggingface.co/v1/chat/completions',
+      apiKeys.huggingface,
+      targetModel,
+      chatMessages,
+      agent.temperature ?? 0.4
+    );
+    textResult = res.text;
+    inputTokens = res.inputTokens;
+    outputTokens = res.outputTokens;
+    modelUsed = res.modelUsed;
+  } else if (apiKeys.huggingface) {
+    const targetModel = agent.model || 'meta-llama/Llama-3.3-70B-Instruct';
+    const res = await callOpenAICompatibleDirect(
+      'https://router.huggingface.co/v1/chat/completions',
+      apiKeys.huggingface,
+      targetModel,
+      chatMessages,
+      agent.temperature ?? 0.4
+    );
+    textResult = res.text;
+    inputTokens = res.inputTokens;
+    outputTokens = res.outputTokens;
+    modelUsed = res.modelUsed;
   } else if (apiKeys.openrouter) {
     // OpenRouter inference - directly surface errors if model crashes or fails
     const targetModel = resolveOpenRouterModel(agent.model);

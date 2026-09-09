@@ -1022,6 +1022,24 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       responseText = orcaRes.text;
       usage = orcaRes.usageMetadata;
       modelUsed = orcaRes.modelUsed;
+    } else if (provider === 'huggingface') {
+      const hfToken = apiKeys?.huggingface || process.env.HF_TOKEN;
+      if (!hfToken) {
+        throw new Error('No Hugging Face token (HF_TOKEN) configured.');
+      }
+
+      const targetModel = agent.model || 'meta-llama/Llama-3.3-70B-Instruct';
+      const hfRes = await callOpenAICompatible(
+        'https://router.huggingface.co/v1/chat/completions',
+        hfToken,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+
+      responseText = hfRes.text;
+      usage = hfRes.usageMetadata;
+      modelUsed = hfRes.modelUsed;
     } else if (provider === 'openrouter') {
       const targetModel = resolveOpenRouterModel(agent.model);
       const candidateOpenRouterKeys: string[] = [];

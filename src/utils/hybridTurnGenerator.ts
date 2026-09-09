@@ -28,7 +28,7 @@ export async function generateBenchmarkTurnHybrid(options: {
   const hasDirectKey = hasConfiguredKeyForProvider(provider, apiKeys);
   const hasOpenRouterKey = Boolean(apiKeys.openrouter && apiKeys.openrouter.trim().length > 0);
   const hasOrcaRouterKey = Boolean(apiKeys.orcarouter && apiKeys.orcarouter.trim().length > 0);
-  const hasHuggingFaceKey = Boolean((apiKeys.huggingface && apiKeys.huggingface.trim().length > 0) || (apiKeys.hfToken && apiKeys.hfToken.trim().length > 0));
+  const hasHuggingFaceKey = Boolean(apiKeys.huggingface && apiKeys.huggingface.trim().length > 0);
   const hasCustomKey = Boolean(apiKeys.customEndpoint?.baseUrl && apiKeys.customEndpoint?.apiKey);
   const hasGoogleKey = Boolean(apiKeys.google && apiKeys.google.trim().length > 0);
 

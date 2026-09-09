@@ -28,6 +28,7 @@ export interface ModelPreset {
     | 'amazon'
     | 'cohere'
     | 'meta'
+    | 'huggingface'
     | 'custom';
   brand: string;
   name: string;

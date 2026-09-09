@@ -42,21 +42,15 @@ export const PROVIDER_METAS: ProviderMeta[] = [
   },
   {
     id: 'huggingface',
-    name: 'Hugging Face Inference (Serverless Hub)',
+    name: 'Hugging Face Inference',
     brandName: 'Hugging Face',
     category: 'universal',
-    tokenLabel: 'Hugging Face Access Token',
+    tokenLabel: 'Hugging Face Token',
     placeholder: 'hf_...',
     portalUrl: 'https://huggingface.co/settings/tokens',
-    portalName: 'HF Tokens Settings',
-    helpText: 'Official access token for Hugging Face Serverless Router (OpenAI compatible) supporting 100+ open-weights frontier models.',
-    recommendedModels: [
-      'meta-llama/Llama-3.3-70B-Instruct',
-      'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B',
-      'Qwen/Qwen2.5-72B-Instruct',
-      'mistralai/Mistral-Small-24B-Instruct-2501',
-      'google/gemma-2-27b-it',
-    ],
+    portalName: 'Hugging Face Tokens',
+    helpText: 'Use Hugging Face serverless inference with OpenAI-compatible endpoints and direct model IDs like meta-llama/Llama-3.3-70B-Instruct.',
+    recommendedModels: ['meta-llama/Llama-3.3-70B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-R1'],
   },
   {
     id: 'google',
@@ -241,7 +235,7 @@ export function hasConfiguredKeyForProvider(
   if (p === 'amazon') return Boolean(keys.amazon && keys.amazon.trim().length > 0);
   if (p === 'openrouter') return Boolean(keys.openrouter && keys.openrouter.trim().length > 0);
   if (p === 'orcarouter') return Boolean(keys.orcarouter && keys.orcarouter.trim().length > 0);
-  if (p === 'huggingface' || p === 'hf') return Boolean((keys.huggingface && keys.huggingface.trim().length > 0) || (keys.hfToken && keys.hfToken.trim().length > 0));
+  if (p === 'huggingface') return Boolean(keys.huggingface && keys.huggingface.trim().length > 0);
   if (p === 'custom') return Boolean(keys.customEndpoint?.apiKey && keys.customEndpoint.apiKey.trim().length > 0);
   return false;
 }
@@ -265,7 +259,7 @@ export function getKeyForProvider(
   if (p === 'amazon') return keys.amazon;
   if (p === 'openrouter') return keys.openrouter;
   if (p === 'orcarouter') return keys.orcarouter;
-  if (p === 'huggingface' || p === 'hf') return keys.huggingface || keys.hfToken;
+  if (p === 'huggingface') return keys.huggingface;
   if (p === 'custom') return keys.customEndpoint?.apiKey;
   return undefined;
 }
@@ -294,7 +288,6 @@ export function countConfiguredKeys(keys: ProviderApiKeys): number {
   if (keys.amazon?.trim()) count++;
   if (keys.openrouter?.trim()) count++;
   if (keys.orcarouter?.trim()) count++;
-  if (keys.huggingface?.trim() || keys.hfToken?.trim()) count++;
   if (keys.customEndpoint?.apiKey?.trim()) count++;
   return count;
 }

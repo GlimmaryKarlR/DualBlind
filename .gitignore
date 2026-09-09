@@ -10,3 +10,6 @@ archive/
 /graphics
 working.txt
 keys.py
+arena_runs_local.jsonl
+leaderboard_cache.json
+/data
