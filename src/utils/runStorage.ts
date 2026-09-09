@@ -6,6 +6,8 @@ import {
   doc,
   setDoc,
   getDocs,
+  query,
+  limit,
   onSnapshot,
   Unsubscribe,
 } from 'firebase/firestore';
@@ -127,24 +129,41 @@ function sanitizeForFirestore<T>(data: T): T {
 }
 
 /**
- * Save a run to the server transport and Firestore.
+ * Save a run to the server transport and local persistent cache (0 Firestore reads).
  */
 export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<BenchmarkRunRecord[]> {
   const normalized = normalizeRunRecord(record) || record;
+  let serverSaved = false;
 
-  // Persist to Firestore as the source of truth.
-  const db = getFirestoreDb();
-  if (db) {
-    try {
-      const sanitizedRecord = sanitizeForFirestore({
-        ...normalized,
-        updatedAt: new Date().toISOString(),
-      });
-      const docRef = doc(db, FIRESTORE_COLLECTION, normalized.id);
-      await setDoc(docRef, sanitizedRecord, { merge: true });
-      console.info(`[Universal Leaderboard] Benchmark run ${normalized.id} synced to Firestore.`);
-    } catch (firestoreErr: any) {
-      console.warn('[Universal Leaderboard] Cloud sync write notice:', firestoreErr?.message || firestoreErr);
+  // 1. Send to server backend to immediately update shared cache and local file backup
+  try {
+    const res = await fetch('/api/leaderboard/save-run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalized),
+    });
+    if (res.ok) {
+      serverSaved = true;
+    }
+  } catch (serverErr) {
+    console.warn('[Universal Leaderboard] Server save notice:', serverErr);
+  }
+
+  // 2. Only attempt direct Firestore fallback if server was unreachable (e.g. standalone preview)
+  if (!serverSaved) {
+    const db = getFirestoreDb();
+    if (db) {
+      try {
+        const sanitizedRecord = sanitizeForFirestore({
+          ...normalized,
+          updatedAt: new Date().toISOString(),
+        });
+        const docRef = doc(db, FIRESTORE_COLLECTION, normalized.id);
+        await setDoc(docRef, sanitizedRecord, { merge: true });
+        console.info(`[Universal Leaderboard] Benchmark run ${normalized.id} synced to Firestore fallback.`);
+      } catch (firestoreErr: any) {
+        console.warn('[Universal Leaderboard] Cloud sync write notice:', firestoreErr?.message || firestoreErr);
+      }
     }
   }
 
@@ -152,27 +171,83 @@ export async function saveRunUniversal(record: BenchmarkRunRecord): Promise<Benc
 }
 
 /**
- * Upload an array of benchmark runs to Firestore
+ * Upload an array of benchmark runs to persistent storage.
+ * Synchronizes with server disk cache with 0 Firestore read units consumed.
  */
 export async function uploadRunsToCloud(runs: BenchmarkRunRecord[]): Promise<void> {
-  const db = getFirestoreDb();
-  if (!db) return;
-
+  // Sync to server local disk cache first (0 quota consumed)
   try {
-    for (const run of runs) {
-      const normalized = normalizeRunRecord(run);
-      if (!normalized || !normalized.id) continue;
-      const sanitized = sanitizeForFirestore({
-        ...normalized,
-        updatedAt: new Date().toISOString(),
-      });
-      const docRef = doc(db, FIRESTORE_COLLECTION, normalized.id);
-      await setDoc(docRef, sanitized, { merge: true });
-    }
-    console.info(`[Universal Leaderboard] Successfully synced ${runs.length} runs to Firestore.`);
+    await fetch('/api/leaderboard/sync-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ runs }),
+    });
   } catch (e) {
-    console.warn('[Universal Leaderboard] Batch upload to cloud notice:', e);
+    console.warn('[Universal Leaderboard] Server batch sync notice:', e);
   }
+}
+
+/**
+ * Import run file (JSON or JSONL format) directly into the leaderboard.
+ * Consumes 0 Firestore read units.
+ */
+export async function importRunFileContent(fileContent: string): Promise<{ success: boolean; added: number; total: number; runs: BenchmarkRunRecord[] }> {
+  try {
+    const res = await fetch('/api/leaderboard/import-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: fileContent }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: true,
+        added: data.added || 0,
+        total: data.total || 0,
+        runs: (data.runs || []).map((r: any) => normalizeRunRecord(r)).filter(Boolean) as BenchmarkRunRecord[],
+      };
+    }
+  } catch (e) {
+    console.warn('[Universal Leaderboard] File import API notice:', e);
+  }
+
+  // Fallback: parse client-side and batch sync
+  const fallbackRuns: BenchmarkRunRecord[] = [];
+  const trimmed = fileContent.trim();
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const list = Array.isArray(parsed) ? parsed : (parsed.runs || [parsed]);
+      for (const item of list) {
+        const norm = normalizeRunRecord(item);
+        if (norm) fallbackRuns.push(norm);
+      }
+    } catch {}
+  }
+  if (fallbackRuns.length === 0) {
+    const lines = fileContent.split('\n');
+    for (const line of lines) {
+      const lineTrimmed = line.trim();
+      if (!lineTrimmed) continue;
+      try {
+        const item = JSON.parse(lineTrimmed);
+        const norm = normalizeRunRecord(item);
+        if (norm) fallbackRuns.push(norm);
+      } catch {}
+    }
+  }
+
+  if (fallbackRuns.length > 0) {
+    await uploadRunsToCloud(fallbackRuns);
+  }
+
+  const updatedRuns = await fetchUniversalLeaderboard();
+  return {
+    success: true,
+    added: fallbackRuns.length,
+    total: updatedRuns.length,
+    runs: updatedRuns,
+  };
 }
 
 /**
@@ -186,27 +261,11 @@ export function saveRunToStorage(record: BenchmarkRunRecord): BenchmarkRunRecord
 }
 
 /**
- * Fetch all universal runs from Firestore. The server endpoint is a secondary
- * transport for deployments where the browser cannot reach Firestore directly.
+ * Fetch universal runs. The server endpoint is the primary high-speed cache
+ * which consumes 0 Firestore read units and prevents quota depletion.
  */
 export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]> {
-  // Primary: Firestore source of truth.
-  const db = getFirestoreDb();
-  if (db) {
-    try {
-      const snapshot = await getDocs(collection(db, FIRESTORE_COLLECTION));
-      const cloudRuns: BenchmarkRunRecord[] = [];
-      snapshot.forEach((docSnap) => {
-        const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
-        if (normalized) cloudRuns.push(normalized);
-      });
-      return cloudRuns.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    } catch (error: any) {
-      console.warn('[Universal Leaderboard] Firestore fetch notice:', error?.message || error);
-    }
-  }
-
-  // Secondary: server transport backed by Firestore.
+  // Primary: Server transport backed by disk cache (0 Firestore read units consumed).
   try {
     const res = await fetch('/api/leaderboard/runs');
     if (res.ok) {
@@ -214,17 +273,35 @@ export async function fetchUniversalLeaderboard(): Promise<BenchmarkRunRecord[]>
       if (contentType && contentType.includes('application/json')) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          const cloudRuns: BenchmarkRunRecord[] = [];
+          const runs: BenchmarkRunRecord[] = [];
           for (const item of data) {
             const normalized = normalizeRunRecord(item);
-            if (normalized) cloudRuns.push(normalized);
+            if (normalized) runs.push(normalized);
           }
-          return cloudRuns;
+          return runs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         }
       }
     }
   } catch {
-    // Server API unavailable or starting
+    // Server API unavailable, fallback below
+  }
+
+  // Fallback: Direct Firestore fetch if server API is unavailable.
+  // Limited to 50 documents to strictly prevent free tier quota exhaustion.
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      const runsQuery = query(collection(db, FIRESTORE_COLLECTION), limit(50));
+      const snapshot = await getDocs(runsQuery);
+      const cloudRuns: BenchmarkRunRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        const normalized = normalizeRunRecord(docSnap.data(), docSnap.id);
+        if (normalized) cloudRuns.push(normalized);
+      });
+      return cloudRuns.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    } catch (error: any) {
+      console.warn('[Universal Leaderboard] Firestore fallback fetch notice:', error?.message || error);
+    }
   }
 
   return [];

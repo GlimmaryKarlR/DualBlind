@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Trophy,
   Filter,
   ArrowUpDown,
   Download,
+  Upload,
   Eye,
   CheckCircle2,
   XCircle,
@@ -28,12 +29,12 @@ import {
   Sparkles,
   FileSpreadsheet,
   Check,
-  AlertTriangle,
   RotateCcw,
   BrainCircuit,
 } from 'lucide-react';
 import { BenchmarkRunRecord, DifficultyLevel, TopicCategory } from '../types/benchmark';
 import { formatTime, formatNumber, formatCurrency, getTierBadge, getTeamFunctionalityBadge, getAgentMakeAndModel } from '../utils/formatters';
+import { importRunFileContent } from '../utils/runStorage';
 import {
   CHALLENGE_TYPES,
   ChallengeTypeId,
@@ -46,6 +47,7 @@ interface LeaderboardViewProps {
   onSelectRunToInspect: (run: BenchmarkRunRecord) => void;
   onLaunchChallenge: (problemId: string) => void;
   onNavigateToDatasets?: () => void;
+  onRefreshLeaderboard?: () => Promise<void> | void;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
@@ -53,7 +55,24 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   onSelectRunToInspect,
   onLaunchChallenge,
   onNavigateToDatasets,
+  onRefreshLeaderboard,
 }) => {
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await fetch('/api/leaderboard/refresh', { method: 'POST' });
+      if (onRefreshLeaderboard) {
+        await onRefreshLeaderboard();
+      }
+    } catch (err) {
+      console.warn('Sync refresh notice:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Primary Challenge Type Filter
   const [selectedChallengeType, setSelectedChallengeType] = useState<ChallengeTypeId>('all');
 
@@ -76,6 +95,40 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(true);
   const [inspectModalRun, setInspectModalRun] = useState<BenchmarkRunRecord | null>(null);
   const [displayLimit, setDisplayLimit] = useState<number>(100);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
+
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
+    setImportNotice(null);
+    try {
+      const text = await file.text();
+      const res = await fetch('/api/leaderboard/import-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImportNotice(`Successfully imported ${data.added} new benchmark run(s) with 0 Firestore read units.`);
+        if (onRefreshLeaderboard) {
+          await onRefreshLeaderboard();
+        }
+      } else {
+        setImportNotice(`Import failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      setImportNotice(`Import error: ${err?.message || 'Failed to read file'}`);
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   // Extract dynamic distinct providers
   const distinctProviders = useMemo(() => {
@@ -394,7 +447,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <span className="text-slate-300 dark:text-slate-700">•</span>
           <span>Showing Top {Math.min(100, sortedRuns.length)} of {sortedRuns.length} filtered</span>
           <span className="text-slate-300 dark:text-slate-700">•</span>
-          <span>Firestore Real-Time</span>
+          <button
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-1 hover:underline cursor-pointer disabled:opacity-50"
+            title="Refresh runs from Firestore"
+          >
+            <RotateCcw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Firestore Real-Time'}</span>
+          </button>
         </div>
       </div>
 
@@ -597,6 +658,22 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
             {/* Export Actions */}
             <div className="flex items-center gap-1.5 flex-wrap">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileImport}
+                accept=".json,.jsonl"
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting}
+                className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-2.5 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-40 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 cursor-pointer shadow-2xs transition-all"
+                title="Import benchmark runs from JSON or JSONL file (Consumes 0 Firestore read units)"
+              >
+                <Upload className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>{isImporting ? 'Importing...' : 'Import File'}</span>
+              </button>
               <button
                 onClick={exportCSV}
                 disabled={sortedRuns.length === 0}
@@ -636,6 +713,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               )}
             </div>
           </div>
+          {importNotice && (
+            <div className="mt-2.5 flex items-center justify-between rounded-xl bg-emerald-50 px-3.5 py-2 text-xs font-medium text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300 animate-fade-in">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                {importNotice}
+              </span>
+              <button
+                onClick={() => setImportNotice(null)}
+                className="text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Expandable Column Filter Grid */}

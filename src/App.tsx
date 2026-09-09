@@ -170,6 +170,17 @@ export default function App() {
     };
   }, []);
 
+  const handleRefreshLeaderboard = useCallback(async () => {
+    try {
+      const refreshed = await fetchUniversalLeaderboard();
+      if (refreshed.length > 0) {
+        setRunsHistory(refreshed);
+      }
+    } catch (err) {
+      console.warn('Leaderboard refresh error:', err);
+    }
+  }, []);
+
   // Reset Arena State
   const handleReset = useCallback(() => {
     setIsRunning(false);
@@ -1458,6 +1469,7 @@ export default function App() {
                 }
               }}
               onNavigateToDatasets={() => setCurrentTab('datasets')}
+              onRefreshLeaderboard={handleRefreshLeaderboard}
             />
           </div>
         )}

@@ -99,16 +99,72 @@ def load_env_candidates():
 load_env_candidates()
 
 
-def get_openrouter_keys(config: argparse.Namespace) -> list[str]:
-    """Return configured OpenRouter keys in rotation order."""
+def get_openrouter_keys(config: argparse.Namespace | None = None) -> list[str]:
+    """Return configured OpenRouter keys in rotation order from CLI, comma lists, and numbered env vars."""
+    keys: list[str] = []
+    seen: set[str] = set()
+
+    def add_candidates(value: str | None) -> None:
+        if not value:
+            return
+        for item in value.split(","):
+            candidate = item.strip()
+            if candidate and candidate not in seen:
+                keys.append(candidate)
+                seen.add(candidate)
+
+    # 1. CLI keys if specified
     cli_keys = getattr(config, "openrouter_keys", None) or []
-    env_keys = os.environ.get("OPENROUTER_API_KEYS", "")
-    keys = cli_keys + [key.strip() for key in env_keys.split(",") if key.strip()]
-    if not keys:
-        legacy_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-        if legacy_key:
-            keys.append(legacy_key)
-    return list(dict.fromkeys(key for key in keys if key))
+    for k in cli_keys:
+        add_candidates(k)
+
+    # 2. Comma-separated OPENROUTER_API_KEYS
+    add_candidates(os.environ.get("OPENROUTER_API_KEYS"))
+
+    # 3. Single OPENROUTER_API_KEY
+    add_candidates(os.environ.get("OPENROUTER_API_KEY"))
+
+    # 4. Numbered variants (OPENROUTER_API_KEY_1, OPENROUTER_API_KEY_2, etc.)
+    for env_name in sorted(os.environ):
+        if env_name.startswith("OPENROUTER_API_KEY_"):
+            add_candidates(os.environ.get(env_name))
+
+    return keys
+
+
+def get_gemini_keys(config: argparse.Namespace | None = None) -> list[str]:
+    """Return configured Gemini/Google keys in rotation order from CLI, comma lists, and numbered env vars."""
+    keys: list[str] = []
+    seen: set[str] = set()
+
+    def add_candidates(value: str | None) -> None:
+        if not value:
+            return
+        for item in value.split(","):
+            candidate = item.strip()
+            if candidate and candidate not in seen:
+                keys.append(candidate)
+                seen.add(candidate)
+
+    # 1. CLI key if specified
+    cli_key = getattr(config, "google_key", None)
+    if cli_key:
+        add_candidates(cli_key)
+
+    # 2. Comma-separated GEMINI_API_KEYS / GOOGLE_API_KEYS
+    add_candidates(os.environ.get("GEMINI_API_KEYS"))
+    add_candidates(os.environ.get("GOOGLE_API_KEYS"))
+
+    # 3. Single GEMINI_API_KEY / GOOGLE_API_KEY
+    add_candidates(os.environ.get("GEMINI_API_KEY"))
+    add_candidates(os.environ.get("GOOGLE_API_KEY"))
+
+    # 4. Numbered variants (GEMINI_API_KEY_1, GOOGLE_API_KEY_1, etc.)
+    for env_name in sorted(os.environ):
+        if env_name.startswith("GEMINI_API_KEY_") or env_name.startswith("GOOGLE_API_KEY_"):
+            add_candidates(os.environ.get(env_name))
+
+    return keys
 
 
 def probe_openrouter_key(api_key: str) -> tuple[bool, str]:
@@ -189,6 +245,48 @@ def is_openrouter_rotation_error(error: Exception) -> bool:
             "credits",
             "insufficient balance",
             "free-models-per-day",
+            "user has exceeded",
+            "can only afford",
+        )
+    )
+
+
+def is_gemini_rotation_error(error: Exception) -> bool:
+    """Identify errors that commonly mean a Gemini key is rate-limited or exhausted."""
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "http 429",
+            "resourceexhausted",
+            "quota",
+            "rate limit",
+            "rate-limit",
+            "limit exceeded",
+            "too many requests",
+            "resource has been exhausted",
+            "api_key_invalid",
+            "api key not valid",
+            "quota exceeded",
+            "quota_exceeded",
+        )
+    )
+
+
+def is_timeout_error(error: Exception) -> bool:
+    """Identify if an error is a network or socket read timeout."""
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "timed out",
+            "the read operation timed out",
+            "timeout",
+            "time out",
+            "deadline exceeded",
+            "connection timed out",
+            "read timeout",
+            "remotedisconnected",
         )
     )
 
@@ -563,13 +661,18 @@ def run_trial(
 
     # Gather API keys from CLI arguments, environment variables, or .env files
     api_keys = {}
-    active_google_key = config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if active_google_key:
-        api_keys["google"] = active_google_key
+    gemini_keys = get_gemini_keys(config)
+    gemini_key_index = 0
+    if gemini_keys:
+        api_keys["google"] = gemini_keys[gemini_key_index]
+        api_keys["googleKeys"] = gemini_keys
+
     openrouter_keys = get_openrouter_keys(config)
     openrouter_key_index = 0
     if openrouter_keys:
         api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
+        api_keys["openrouterKeys"] = openrouter_keys
+
     if config.openai_key or os.environ.get("OPENAI_API_KEY"):
         api_keys["openai"] = config.openai_key or os.environ.get("OPENAI_API_KEY")
     if config.anthropic_key or os.environ.get("ANTHROPIC_API_KEY"):
@@ -623,20 +726,67 @@ def run_trial(
         }
 
         turn_start = time.time()
+        turn_timeout = getattr(config, "turn_timeout", 120) or 120
+        turn_retries_left = 3
         while True:
             try:
-                res = post_json(f"{base_url}/api/benchmark/generate-turn", turn_payload, timeout=60)
+                res = post_json(f"{base_url}/api/benchmark/generate-turn", turn_payload, timeout=turn_timeout)
                 break
             except Exception as turn_error:
-                next_key_index = openrouter_key_index + 1
-                if not openrouter_keys or next_key_index >= len(openrouter_keys) or not is_openrouter_rotation_error(turn_error):
-                    raise
-                openrouter_key_index = next_key_index
-                api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
-                turn_payload["apiKeys"] = api_keys
-                print(
-                    f"{YELLOW}[!] OpenRouter key {openrouter_key_index} selected after a quota/rate-limit error. Retrying turn...{RESET}"
-                )
+                # 1. Check for OpenRouter key quota/rate-limit rotation
+                if openrouter_keys and (openrouter_key_index + 1) < len(openrouter_keys) and is_openrouter_rotation_error(turn_error):
+                    openrouter_key_index += 1
+                    api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
+                    turn_payload["apiKeys"] = api_keys
+                    print(
+                        f"{YELLOW}[!] OpenRouter key {openrouter_key_index + 1}/{len(openrouter_keys)} selected after quota/rate-limit error. Retrying turn...{RESET}"
+                    )
+                    continue
+
+                # 2. Check for Gemini key quota/rate-limit rotation
+                if gemini_keys and (gemini_key_index + 1) < len(gemini_keys) and is_gemini_rotation_error(turn_error):
+                    gemini_key_index += 1
+                    api_keys["google"] = gemini_keys[gemini_key_index]
+                    turn_payload["apiKeys"] = api_keys
+                    print(
+                        f"{YELLOW}[!] Gemini key {gemini_key_index + 1}/{len(gemini_keys)} selected after quota/rate-limit error. Retrying turn...{RESET}"
+                    )
+                    continue
+
+                # 3. Check for Socket / Network Read Timeout
+                if is_timeout_error(turn_error):
+                    turn_provider = current_agent.get("provider", "").lower()
+                    # If this agent was using OpenRouter and more keys exist, rotate to next key
+                    if "openrouter" in turn_provider and openrouter_keys and (openrouter_key_index + 1) < len(openrouter_keys):
+                        openrouter_key_index += 1
+                        api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
+                        turn_payload["apiKeys"] = api_keys
+                        print(
+                            f"{YELLOW}[!] Turn read timeout on OpenRouter. Rotating to key {openrouter_key_index + 1}/{len(openrouter_keys)} and retrying...{RESET}"
+                        )
+                        continue
+
+                    # If this agent was using Google/Gemini and more keys exist, rotate to next key
+                    if ("google" in turn_provider or "gemini" in turn_provider) and gemini_keys and (gemini_key_index + 1) < len(gemini_keys):
+                        gemini_key_index += 1
+                        api_keys["google"] = gemini_keys[gemini_key_index]
+                        turn_payload["apiKeys"] = api_keys
+                        print(
+                            f"{YELLOW}[!] Turn read timeout on Gemini. Rotating to key {gemini_key_index + 1}/{len(gemini_keys)} and retrying...{RESET}"
+                        )
+                        continue
+
+                    # Otherwise retry with backoff
+                    if turn_retries_left > 0:
+                        turn_retries_left -= 1
+                        backoff = 2.0 + (3 - turn_retries_left) * 1.5
+                        print(
+                            f"{YELLOW}[!] Turn read timeout ({turn_error}). Retrying turn in {backoff:.1f}s ({turn_retries_left} turn retries left)...{RESET}"
+                        )
+                        time.sleep(backoff)
+                        continue
+
+                raise
         turn_latency = int((time.time() - turn_start) * 1000)
 
         model_used = str(res.get("modelUsed", ""))
@@ -963,6 +1113,7 @@ def main():
     parser.add_argument("--list-free-models", action="store_true", help="List all verified 100%% free models across OpenRouter & Google and exit")
     parser.add_argument("--suite", default="all", help="Benchmark suite filter (e.g. gpqa_diamond, swe_bench, math_aime, hle, all)")
     parser.add_argument("--max-turns", type=int, default=5, help="Maximum turns per agent (default: 5)")
+    parser.add_argument("--turn-timeout", type=int, default=120, help="Per-turn inference timeout in seconds (default: 120)")
     parser.add_argument("--uncapped", action="store_true", help="Run in uncapped mode until natural consensus or loop cap")
     parser.add_argument("--count", type=int, default=0, help="Number of benchmark trials to run (0 for infinite loop)")
     parser.add_argument("--delay", type=float, default=2.0, help="Cooling delay in seconds between trials (default: 2.0)")

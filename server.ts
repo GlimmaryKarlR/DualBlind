@@ -11,8 +11,15 @@ import {
   batchSync,
   syncFromFirestore,
   getSyncStatus,
+  checkAndIngestLocalFiles,
+  importRawRunsContent,
 } from './server/leaderboardCache';
 
+// Load environment variables: prioritize .env.local if present, then fall back to .env
+const envLocalPath = path.resolve(process.cwd(), '.env.local');
+if (fs.existsSync(envLocalPath)) {
+  dotenv.config({ path: envLocalPath });
+}
 dotenv.config();
 
 const app = express();
@@ -20,6 +27,59 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+/**
+ * Extract an array of distinct API keys from environment variables.
+ * Parses comma-separated lists (e.g. GEMINI_API_KEYS), single variable (e.g. GEMINI_API_KEY),
+ * and numbered variants (e.g. GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.)
+ */
+function parseApiKeysFromEnv(pluralOrPrefix: string, singular?: string): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (val: string | undefined | null) => {
+    if (!val) return;
+    for (const item of val.split(',')) {
+      const clean = item.trim();
+      if (clean && !seen.has(clean)) {
+        keys.push(clean);
+        seen.add(clean);
+      }
+    }
+  };
+
+  // 1. Plural / comma-separated list
+  add(process.env[pluralOrPrefix]);
+
+  // 2. Singular variable
+  if (singular) {
+    add(process.env[singular]);
+  }
+
+  // 3. Numbered variables (e.g. KEY_1, KEY_2, KEY_3)
+  const prefix = singular ? `${singular}_` : `${pluralOrPrefix}_`;
+  for (const [envKey, envVal] of Object.entries(process.env)) {
+    if (envKey.startsWith(prefix) && envVal) {
+      add(envVal);
+    }
+  }
+
+  return keys;
+}
+
+export function getGeminiApiKeys(): string[] {
+  const geminiKeys = parseApiKeysFromEnv('GEMINI_API_KEYS', 'GEMINI_API_KEY');
+  const googleKeys = parseApiKeysFromEnv('GOOGLE_API_KEYS', 'GOOGLE_API_KEY');
+  const combined = [...geminiKeys];
+  for (const k of googleKeys) {
+    if (!combined.includes(k)) combined.push(k);
+  }
+  return combined;
+}
+
+export function getOpenRouterApiKeys(): string[] {
+  return parseApiKeysFromEnv('OPENROUTER_API_KEYS', 'OPENROUTER_API_KEY');
+}
 
 // In-memory store for benchmark run history and leaderboard records
 interface SavedRunRecord {
@@ -51,9 +111,9 @@ interface SavedRunRecord {
 
 const savedBenchmarkRuns: SavedRunRecord[] = [];
 
-// Lazy initialization of GoogleGenAI
-function getGenAI(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
+// Lazy initialization of GoogleGenAI using pool of configured keys
+function getGenAI(forcedKey?: string): GoogleGenAI {
+  const apiKey = forcedKey || getGeminiApiKeys()[0] || process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY environment variable is missing.');
   }
@@ -502,16 +562,24 @@ async function callOpenAICompatible(
     headers['X-Title'] = 'DualBlind AI Arena';
   }
 
-  const res = await fetch(endpointUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: modelName,
-      messages,
-      temperature: Math.min(1.0, Math.max(0.0, temperature ?? 0.4)),
-      max_tokens: maxTokens,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 55000);
+  let res: Response;
+  try {
+    res = await fetch(endpointUrl, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: modelName,
+        messages,
+        temperature: Math.min(1.0, Math.max(0.0, temperature ?? 0.4)),
+        max_tokens: maxTokens,
+      }),
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!res.ok) {
     const errorText = await res.text();
@@ -635,9 +703,9 @@ async function callAnthropicMessages(
   };
 }
 
-// Resilient Gemini API caller with exponential backoff, model switching, and graceful fallback
+// Resilient Gemini API caller with multi-key pool rotation, exponential backoff, model switching, and graceful fallback
 async function callGeminiWithResilience(
-  ai: GoogleGenAI,
+  keysOrAi: string[] | GoogleGenAI,
   primaryModel: string,
   contents: any,
   systemInstruction: string,
@@ -658,54 +726,102 @@ async function callGeminiWithResilience(
     'gemini-flash-latest',
   ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i); // Unique models
 
+  const aiInstances: GoogleGenAI[] = Array.isArray(keysOrAi)
+    ? keysOrAi.map(
+        (key) =>
+          new GoogleGenAI({
+            apiKey: key,
+            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+          })
+      )
+    : [keysOrAi];
+
   let lastError: any = null;
 
-  for (const modelName of modelsToAttempt) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: contents,
-          config: {
-            systemInstruction,
-            temperature: Math.min(1.0, Math.max(0.0, temperature ?? 0.4)),
-          },
-        });
+  for (let keyIdx = 0; keyIdx < aiInstances.length; keyIdx++) {
+    const ai = aiInstances[keyIdx];
+    let keyHitQuota = false;
 
-        if (response && response.text && response.text.trim().length > 0) {
-          return {
-            text: response.text,
-            usageMetadata: response.usageMetadata,
-            modelUsed: modelName,
-          };
-        }
-      } catch (err: any) {
-        lastError = err;
-        const errMsg = err?.message || String(err);
-        const isTransient =
-          err?.status === 'UNAVAILABLE' ||
-          errMsg.includes('503') ||
-          errMsg.includes('429') ||
-          errMsg.includes('high demand') ||
-          errMsg.includes('ResourceExhausted') ||
-          errMsg.includes('overloaded');
+    for (const modelName of modelsToAttempt) {
+      if (keyHitQuota) break;
 
-        console.warn(`[Gemini API Resilience] Model ${modelName} (attempt ${attempt}/2) encountered: ${errMsg.substring(0, 120)}`);
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const callPromise = ai.models.generateContent({
+            model: modelName,
+            contents: contents,
+            config: {
+              systemInstruction,
+              temperature: Math.min(1.0, Math.max(0.0, temperature ?? 0.4)),
+            },
+          });
+          const timerPromise = new Promise<never>((_, reject) => {
+            const timerId = setTimeout(() => reject(new Error(`Gemini API call timed out after 50s for model ${modelName}`)), 50000);
+            callPromise.finally(() => clearTimeout(timerId));
+          });
+          const response = await Promise.race([callPromise, timerPromise]);
 
-        if (isTransient && attempt === 1) {
-          // Jittered backoff delay before retry
-          const backoffMs = 800 + Math.floor(Math.random() * 600);
-          await new Promise((resolve) => setTimeout(resolve, backoffMs));
-        } else {
-          // Switch to next model in sequence
-          break;
+          if (response && response.text && response.text.trim().length > 0) {
+            return {
+              text: response.text,
+              usageMetadata: response.usageMetadata,
+              modelUsed: modelName,
+            };
+          }
+        } catch (err: any) {
+          lastError = err;
+          const errMsg = err?.message || String(err);
+          const isQuota =
+            errMsg.includes('429') ||
+            errMsg.includes('ResourceExhausted') ||
+            errMsg.includes('quota') ||
+            errMsg.includes('limit') ||
+            errMsg.includes('exhausted');
+
+          const isTimeout =
+            errMsg.includes('timed out') ||
+            errMsg.includes('timeout') ||
+            errMsg.includes('DEADLINE_EXCEEDED');
+
+          if ((isQuota || isTimeout) && keyIdx < aiInstances.length - 1) {
+            console.warn(
+              `[Gemini API Key Rotation] Key ${keyIdx + 1}/${aiInstances.length} encountered ${isTimeout ? 'timeout' : 'quota/rate-limit'} (${errMsg.substring(
+                0,
+                80
+              )}). Rotating to next Gemini key...`
+            );
+            keyHitQuota = true;
+            break;
+          }
+
+          const isTransient =
+            err?.status === 'UNAVAILABLE' ||
+            errMsg.includes('503') ||
+            errMsg.includes('high demand') ||
+            errMsg.includes('overloaded');
+
+          console.warn(
+            `[Gemini API Resilience] Model ${modelName} (attempt ${attempt}/2, key ${keyIdx + 1}/${aiInstances.length}) encountered: ${errMsg.substring(
+              0,
+              120
+            )}`
+          );
+
+          if (isTransient && attempt === 1) {
+            // Jittered backoff delay before retry
+            const backoffMs = 800 + Math.floor(Math.random() * 600);
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          } else {
+            // Switch to next model in sequence
+            break;
+          }
         }
       }
     }
   }
 
   if (requireLive) {
-    throw lastError || new Error('All live Gemini model attempts failed.');
+    throw lastError || new Error('All live Gemini key and model attempts failed.');
   }
 
   // Interactive app mode may use synthetic reasoning to remain usable during provider outages.
@@ -884,10 +1000,19 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       usage = orcaRes.usageMetadata;
       modelUsed = orcaRes.modelUsed;
     } else if (provider === 'openrouter') {
-      const openRouterKey = apiKeys?.openrouter || process.env.OPENROUTER_API_KEY;
       const targetModel = resolveOpenRouterModel(agent.model);
+      const candidateOpenRouterKeys: string[] = [];
+      if (apiKeys?.openrouter) candidateOpenRouterKeys.push(apiKeys.openrouter);
+      if (Array.isArray(apiKeys?.openrouterKeys)) {
+        for (const k of apiKeys.openrouterKeys) {
+          if (k && !candidateOpenRouterKeys.includes(k)) candidateOpenRouterKeys.push(k);
+        }
+      }
+      for (const k of getOpenRouterApiKeys()) {
+        if (!candidateOpenRouterKeys.includes(k)) candidateOpenRouterKeys.push(k);
+      }
 
-      if (!openRouterKey) {
+      if (candidateOpenRouterKeys.length === 0) {
         if (requireLive) {
           throw new Error(`No live OpenRouter API key configured for model ${targetModel}.`);
         }
@@ -897,29 +1022,58 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         usage = fallbackRes.usageMetadata;
         modelUsed = `${targetModel} (resilient-offline)`;
       } else {
-        let openRouterRes;
-        try {
-          openRouterRes = await callOpenAICompatible(
-            'https://openrouter.ai/api/v1/chat/completions',
-            openRouterKey,
-            targetModel,
-            chatMessages,
-            agent.temperature ?? 0.4
-          );
-        } catch (error: any) {
-          const message = error?.message || String(error);
-          const canUseFreeRouter = targetModel !== 'openrouter/free' &&
-            /no endpoints found|unavailable for free|model not found/i.test(message);
-          if (!canUseFreeRouter) throw error;
-          console.warn(`[OpenRouter] ${targetModel} is unavailable; retrying with openrouter/free.`);
-          openRouterRes = await callOpenAICompatible(
-            'https://openrouter.ai/api/v1/chat/completions',
-            openRouterKey,
-            'openrouter/free',
-            chatMessages,
-            agent.temperature ?? 0.4
-          );
+        let openRouterRes: any = null;
+        let lastError: any = null;
+
+        for (let kIdx = 0; kIdx < candidateOpenRouterKeys.length; kIdx++) {
+          const currentKey = candidateOpenRouterKeys[kIdx];
+          try {
+            openRouterRes = await callOpenAICompatible(
+              'https://openrouter.ai/api/v1/chat/completions',
+              currentKey,
+              targetModel,
+              chatMessages,
+              agent.temperature ?? 0.4
+            );
+            break;
+          } catch (error: any) {
+            lastError = error;
+            const message = error?.message || String(error);
+            const canUseFreeRouter = targetModel !== 'openrouter/free' &&
+              /no endpoints found|unavailable for free|model not found/i.test(message);
+
+            if (canUseFreeRouter) {
+              try {
+                console.warn(`[OpenRouter] ${targetModel} unavailable on key ${kIdx + 1}; retrying with openrouter/free.`);
+                openRouterRes = await callOpenAICompatible(
+                  'https://openrouter.ai/api/v1/chat/completions',
+                  currentKey,
+                  'openrouter/free',
+                  chatMessages,
+                  agent.temperature ?? 0.4
+                );
+                break;
+              } catch (freeErr: any) {
+                lastError = freeErr;
+              }
+            }
+
+            const isRotatable =
+              /429|rate limit|quota|credits|balance|insufficient|unauthorized|401|can only afford|timeout|timed out|abort/i.test(message);
+
+            if (isRotatable && kIdx < candidateOpenRouterKeys.length - 1) {
+              console.warn(`[OpenRouter Key Rotation] Key ${kIdx + 1}/${candidateOpenRouterKeys.length} failed (${message.substring(0, 80)}). Rotating to next OpenRouter key...`);
+              continue;
+            }
+
+            throw lastError;
+          }
         }
+
+        if (!openRouterRes) {
+          throw lastError || new Error('Failed to obtain OpenRouter response across all available keys.');
+        }
+
         responseText = openRouterRes.text;
         usage = openRouterRes.usageMetadata;
         modelUsed = openRouterRes.modelUsed;
@@ -950,19 +1104,16 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       usage = customRes.usageMetadata;
       modelUsed = customRes.modelUsed;
     } else {
-      // Default / Google Gemini execution with user or platform key
-      let ai: GoogleGenAI | null = null;
-      if (apiKeys?.google) {
-        ai = new GoogleGenAI({
-          apiKey: apiKeys.google,
-          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-        });
-      } else if (process.env.GEMINI_API_KEY) {
-        try {
-          ai = getGenAI();
-        } catch (e) {
-          ai = null;
+      // Default / Google Gemini execution with user or platform key pool
+      const candidateGeminiKeys: string[] = [];
+      if (apiKeys?.google) candidateGeminiKeys.push(apiKeys.google);
+      if (Array.isArray(apiKeys?.googleKeys)) {
+        for (const k of apiKeys.googleKeys) {
+          if (k && !candidateGeminiKeys.includes(k)) candidateGeminiKeys.push(k);
         }
+      }
+      for (const k of getGeminiApiKeys()) {
+        if (!candidateGeminiKeys.includes(k)) candidateGeminiKeys.push(k);
       }
 
       const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
@@ -988,7 +1139,7 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         });
       }
 
-      if (!ai) {
+      if (candidateGeminiKeys.length === 0) {
         if (requireLive) {
           throw new Error('No live Gemini API key configured for this benchmark request.');
         }
@@ -999,7 +1150,7 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         modelUsed = `${agent.model || 'gemini-3.7-flash'} (resilient-offline)`;
       } else {
         const geminiRes = await callGeminiWithResilience(
-          ai,
+          candidateGeminiKeys,
           agent.model || 'gemini-3.7-flash',
           contents,
           systemInstruction,
@@ -1181,6 +1332,42 @@ app.post('/api/leaderboard/sync-batch', (req, res) => {
   }
 });
 
+// Import run files (JSON or JSONL format) directly with 0 Firestore reads
+app.post('/api/leaderboard/import-file', (req, res) => {
+  try {
+    const content = req.body?.content || (typeof req.body === 'string' ? req.body : '');
+    if (!content) {
+      return res.status(400).json({ error: 'No file content provided' });
+    }
+    const result = importRawRunsContent(content);
+    const all = getAllRuns();
+    res.json({
+      success: true,
+      added: result.added,
+      total: all.length,
+      runs: all,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to import run file' });
+  }
+});
+
+// Re-check and ingest all local files (JSON/JSONL) with 0 Firestore reads
+app.post('/api/leaderboard/check-files', (req, res) => {
+  try {
+    const added = checkAndIngestLocalFiles();
+    const all = getAllRuns();
+    res.json({
+      success: true,
+      added,
+      total: all.length,
+      runs: all,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to check local files' });
+  }
+});
+
 // Get leaderboard and run statistics (served from memory with 0 Firestore reads)
 app.get('/api/benchmark/leaderboard', (req, res) => {
   try {
@@ -1209,6 +1396,31 @@ app.get('/api/leaderboard/runs', (req, res) => {
 // Leaderboard sync status
 app.get('/api/leaderboard/status', (req, res) => {
   res.json(getSyncStatus());
+});
+
+// Provider and API key pool status (masked preview for verification)
+app.get('/api/benchmark/keys-status', (req, res) => {
+  const geminiKeys = getGeminiApiKeys();
+  const openRouterKeys = getOpenRouterApiKeys();
+  res.json({
+    gemini: {
+      count: geminiKeys.length,
+      configured: geminiKeys.length > 0,
+      maskedKeys: geminiKeys.map((k) =>
+        k.length > 8 ? `${k.substring(0, 4)}...${k.substring(k.length - 4)}` : '***'
+      ),
+    },
+    openrouter: {
+      count: openRouterKeys.length,
+      configured: openRouterKeys.length > 0,
+      maskedKeys: openRouterKeys.map((k) =>
+        k.length > 12 ? `${k.substring(0, 9)}...${k.substring(k.length - 4)}` : '***'
+      ),
+    },
+    hasHfToken: Boolean(process.env.HF_TOKEN && process.env.HF_TOKEN.trim()),
+    hasOrcaRouterBaseUrl: Boolean(process.env.ORCAROUTER_BASE_URL && process.env.ORCAROUTER_BASE_URL.trim()),
+    port: PORT,
+  });
 });
 
 // Trigger a refresh from Firestore in background
