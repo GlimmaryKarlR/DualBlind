@@ -167,6 +167,41 @@ def get_gemini_keys(config: argparse.Namespace | None = None) -> list[str]:
     return keys
 
 
+def get_huggingface_tokens(config: argparse.Namespace | None = None) -> list[str]:
+    """Return configured Hugging Face tokens in rotation order from CLI, comma lists, and env vars."""
+    keys: list[str] = []
+    seen: set[str] = set()
+
+    def add_candidates(value: str | None) -> None:
+        if not value:
+            return
+        for item in value.split(","):
+            candidate = item.strip()
+            if candidate and candidate not in seen:
+                keys.append(candidate)
+                seen.add(candidate)
+
+    # 1. CLI token if specified
+    cli_tokens = getattr(config, "hf_tokens", None) or []
+    for k in cli_tokens:
+        add_candidates(k)
+
+    # 2. Comma-separated HF_TOKENS / HUGGINGFACE_API_KEYS
+    add_candidates(os.environ.get("HF_TOKENS"))
+    add_candidates(os.environ.get("HUGGINGFACE_API_KEYS"))
+
+    # 3. Single HF_TOKEN / HUGGINGFACE_API_KEY
+    add_candidates(os.environ.get("HF_TOKEN"))
+    add_candidates(os.environ.get("HUGGINGFACE_API_KEY"))
+
+    # 4. Numbered variants (HF_TOKEN_1, HF_TOKEN_2, etc.)
+    for env_name in sorted(os.environ):
+        if env_name.startswith("HF_TOKEN_") or env_name.startswith("HUGGINGFACE_API_KEY_"):
+            add_candidates(os.environ.get(env_name))
+
+    return keys
+
+
 def probe_openrouter_key(api_key: str) -> tuple[bool, str]:
     """Return whether an OpenRouter key can actually complete a minimal live request."""
     if not api_key:
@@ -269,6 +304,24 @@ def is_gemini_rotation_error(error: Exception) -> bool:
             "api key not valid",
             "quota exceeded",
             "quota_exceeded",
+        )
+    )
+
+
+def is_huggingface_rotation_error(error: Exception) -> bool:
+    """Identify errors that commonly mean a Hugging Face token is rate-limited, unauthorized, or exhausted."""
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "http 429",
+            "rate limit",
+            "rate-limit",
+            "too many requests",
+            "unauthorized",
+            "http 401",
+            "quota",
+            "exceeded",
         )
     )
 
@@ -500,6 +553,49 @@ VERIFIED_FREE_MODELS = [
         "name": "Gemini 1.5 Flash",
         "family": "Google",
     },
+    # Hugging Face Serverless Free Tier Models
+    {
+        "model": "meta-llama/Llama-3.3-70B-Instruct",
+        "provider": "huggingface",
+        "name": "Llama 3.3 70B (Hugging Face)",
+        "family": "Meta",
+    },
+    {
+        "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+        "provider": "huggingface",
+        "name": "DeepSeek R1 Distill Qwen 32B (Hugging Face)",
+        "family": "DeepSeek",
+    },
+    {
+        "model": "Qwen/Qwen2.5-72B-Instruct",
+        "provider": "huggingface",
+        "name": "Qwen 2.5 72B (Hugging Face)",
+        "family": "Qwen",
+    },
+    {
+        "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "provider": "huggingface",
+        "name": "Qwen 2.5 Coder 32B (Hugging Face)",
+        "family": "Qwen",
+    },
+    {
+        "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+        "provider": "huggingface",
+        "name": "Mistral Small 24B (Hugging Face)",
+        "family": "Mistral",
+    },
+    {
+        "model": "google/gemma-2-27b-it",
+        "provider": "huggingface",
+        "name": "Gemma 2 27B (Hugging Face)",
+        "family": "Google",
+    },
+    {
+        "model": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+        "provider": "huggingface",
+        "name": "SmolLM2 1.7B (Hugging Face)",
+        "family": "HuggingFace",
+    },
 ]
 
 
@@ -509,6 +605,8 @@ def is_model_free(model_name: str, provider: str = "") -> bool:
         return False
     m = model_name.lower().strip()
     if ":free" in m or m.endswith("/free") or m == "openrouter/free":
+        return True
+    if provider.lower() in ("huggingface", "hf") or m.startswith("hf:") or m.startswith("huggingface/"):
         return True
     if provider.lower() == "google" or m.startswith("gemini-") or m.startswith("google/"):
         if any(f in m for f in ["flash", "gemma", "exp"]):
@@ -597,6 +695,8 @@ def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dic
         pool = [m for m in pool if m["provider"] == "openrouter"]
     elif provider_filter == "google":
         pool = [m for m in pool if m["provider"] == "google"]
+    elif provider_filter in ("huggingface", "hf"):
+        pool = [m for m in pool if m["provider"] == "huggingface"]
 
     if not pool:
         pool = list(VERIFIED_FREE_MODELS if force_free else PAID_MODEL_POOL)
@@ -672,6 +772,13 @@ def run_trial(
     if openrouter_keys:
         api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
         api_keys["openrouterKeys"] = openrouter_keys
+
+    hf_tokens = get_huggingface_tokens(config)
+    hf_token_index = 0
+    if hf_tokens:
+        api_keys["huggingface"] = hf_tokens[hf_token_index]
+        api_keys["hfToken"] = hf_tokens[hf_token_index]
+        api_keys["huggingfaceKeys"] = hf_tokens
 
     if config.openai_key or os.environ.get("OPENAI_API_KEY"):
         api_keys["openai"] = config.openai_key or os.environ.get("OPENAI_API_KEY")
@@ -753,6 +860,17 @@ def run_trial(
                     )
                     continue
 
+                # 3. Check for Hugging Face token rate-limit rotation
+                if hf_tokens and (hf_token_index + 1) < len(hf_tokens) and is_huggingface_rotation_error(turn_error):
+                    hf_token_index += 1
+                    api_keys["huggingface"] = hf_tokens[hf_token_index]
+                    api_keys["hfToken"] = hf_tokens[hf_token_index]
+                    turn_payload["apiKeys"] = api_keys
+                    print(
+                        f"{YELLOW}[!] Hugging Face token {hf_token_index + 1}/{len(hf_tokens)} selected after rate-limit error. Retrying turn...{RESET}"
+                    )
+                    continue
+
                 # 3. Check for Socket / Network Read Timeout
                 if is_timeout_error(turn_error):
                     turn_provider = current_agent.get("provider", "").lower()
@@ -773,6 +891,17 @@ def run_trial(
                         turn_payload["apiKeys"] = api_keys
                         print(
                             f"{YELLOW}[!] Turn read timeout on Gemini. Rotating to key {gemini_key_index + 1}/{len(gemini_keys)} and retrying...{RESET}"
+                        )
+                        continue
+
+                    # If this agent was using Hugging Face and more tokens exist, rotate to next token
+                    if ("huggingface" in turn_provider or "hf" in turn_provider) and hf_tokens and (hf_token_index + 1) < len(hf_tokens):
+                        hf_token_index += 1
+                        api_keys["huggingface"] = hf_tokens[hf_token_index]
+                        api_keys["hfToken"] = hf_tokens[hf_token_index]
+                        turn_payload["apiKeys"] = api_keys
+                        print(
+                            f"{YELLOW}[!] Turn read timeout on Hugging Face. Rotating to token {hf_token_index + 1}/{len(hf_tokens)} and retrying...{RESET}"
                         )
                         continue
 
@@ -1098,10 +1227,18 @@ def main():
         default=None,
         help="OpenRouter API key; repeat for rotation (or use OPENROUTER_API_KEYS, comma-separated)",
     )
+    parser.add_argument(
+        "--hf-token",
+        "--huggingface-token",
+        dest="hf_tokens",
+        action="append",
+        default=None,
+        help="Hugging Face User Access Token (or HF_TOKEN/HF_TOKENS from environment)",
+    )
     parser.add_argument("--openai-key", default=None, help="OpenAI API Key (default: OPENAI_API_KEY from environment or .env)")
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")
     parser.add_argument("--deepseek-key", default=None, help="DeepSeek API Key (default: DEEPSEEK_API_KEY from environment or .env)")
-    parser.add_argument("--provider", default="all", choices=["all", "openrouter", "google"], help="Provider pool: all (mix OpenRouter & Google), openrouter, or google (default: all)")
+    parser.add_argument("--provider", default="all", choices=["all", "openrouter", "google", "huggingface"], help="Provider pool: all (mix OpenRouter, Google & Hugging Face), openrouter, google, or huggingface (default: all)")
     parser.add_argument("--force-free", dest="force_free", action="store_true", default=True, help="Force 100%% free models only (default: True)")
     parser.add_argument("--allow-paid", dest="force_free", action="store_false", help="Allow paid non-free models")
     parser.add_argument("--random-models", dest="random_models", action="store_true", default=True, help="Use multiple models at random for each trial (default: True)")

@@ -229,18 +229,21 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
 
   const handleApplyCustom = () => {
     if (!customInput.trim()) return;
+    const trimmed = customInput.trim();
+    const isHf = trimmed.toLowerCase().startsWith('hf:') || trimmed.toLowerCase().startsWith('huggingface/') || (trimmed.includes('/') && !trimmed.includes('openrouter'));
+    const cleanHfModel = trimmed.replace(/^hf:/i, '').replace(/^huggingface\//i, '');
     const customModel: CatalogModel = {
-      id: customInput.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-      rawName: `Custom: ${customInput.trim()}`,
-      brand: 'Custom',
-      name: customInput.trim(),
-      modelCode: customInput.trim(),
-      provider: 'custom',
+      id: trimmed.toLowerCase().replace(/[^a-z0-9.]+/g, '-'),
+      rawName: isHf ? `Hugging Face: ${cleanHfModel}` : `Custom: ${trimmed}`,
+      brand: isHf ? 'Hugging Face' : 'Custom',
+      name: isHf ? cleanHfModel : trimmed,
+      modelCode: isHf ? cleanHfModel : trimmed,
+      provider: isHf ? 'huggingface' : 'custom',
       isExternal: false,
-      inputPricePerMillion: 1.0,
-      outputPricePerMillion: 3.0,
-      tags: ['Custom'],
-      isFree: false,
+      inputPricePerMillion: isHf ? 0.0 : 1.0,
+      outputPricePerMillion: isHf ? 0.0 : 3.0,
+      tags: isHf ? ['Hugging Face', 'Free'] : ['Custom'],
+      isFree: isHf,
     };
     onSelectModel(customModel);
     setCustomInput('');
@@ -251,6 +254,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
   const topBrands = [
     'all',
     'free',
+    'Hugging Face',
     'Google',
     'OpenAI',
     'Anthropic',

@@ -21,6 +21,7 @@ export interface CatalogModel {
     | 'cohere'
     | 'openrouter'
     | 'orcarouter'
+    | 'huggingface'
     | 'custom';
   isExternal: boolean;
   inputPricePerMillion: number;
@@ -39,6 +40,16 @@ export interface BrandGroup {
 
 // Raw list supplied by user
 const RAW_MODELS: string[] = [
+  'Hugging Face: Llama 3.3 70B Instruct',
+  'Hugging Face: DeepSeek R1 Distill Qwen 32B',
+  'Hugging Face: Qwen 2.5 72B Instruct',
+  'Hugging Face: Qwen 2.5 Coder 32B',
+  'Hugging Face: Mistral Small 24B',
+  'Hugging Face: Gemma 2 27B',
+  'Hugging Face: Phi 3.5 Mini',
+  'Hugging Face: SmolLM2 1.7B Instruct',
+  'Hugging Face: DeepSeek R1 Distill Llama 70B',
+  'Hugging Face: Llama 3.1 8B Instruct',
   'AionLabs: Aion-2.0',
   'AionLabs: Aion-3.0',
   'AionLabs: Aion-3.0-Mini',
@@ -517,6 +528,9 @@ function extractBrandAndName(raw: string): { brand: string; name: string } {
   if (trimmed.toLowerCase().startsWith('orcarouter') || trimmed.toLowerCase().startsWith('orca router')) {
     return { brand: 'OrcaRouter', name: trimmed.replace(/^OrcaRouter:?\s*/i, '') };
   }
+  if (trimmed.toLowerCase().startsWith('hugging face:') || trimmed.toLowerCase().startsWith('huggingface:')) {
+    return { brand: 'Hugging Face', name: trimmed.replace(/^hugging\s*face:\s*/i, '') };
+  }
   if (trimmed.toLowerCase().startsWith('remm') || trimmed.toLowerCase().startsWith('mythomax')) {
     return { brand: 'Open Community', name: trimmed };
   }
@@ -533,6 +547,7 @@ function resolveProvider(brand: string, modelName: string): CatalogModel['provid
   const b = brand.toLowerCase();
   const m = modelName.toLowerCase();
   if (b.includes('orcarouter') || b.includes('orca router') || m.includes('orcarouter')) return 'orcarouter';
+  if (b.includes('hugging face') || b.includes('huggingface') || m.includes('huggingface') || m.startsWith('hf/')) return 'huggingface';
   if (b.includes('google')) return 'google';
   if (b.includes('anthropic') || m.includes('claude')) return 'anthropic';
   if (b.includes('openai') || m.includes('gpt') || m.includes('o1') || m.includes('o3') || m.includes('o4')) return 'openai';
@@ -604,6 +619,20 @@ function parseModelEntry(raw: string, index: number): CatalogModel {
 
   if (isFree) {
     effectiveProvider = 'openrouter';
+  } else if (provider === 'huggingface' || brand === 'Hugging Face') {
+    effectiveProvider = 'huggingface';
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('llama 3.3 70b')) modelCode = 'meta-llama/Llama-3.3-70B-Instruct';
+    else if (lowerName.includes('deepseek r1 distill qwen 32b')) modelCode = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B';
+    else if (lowerName.includes('deepseek r1 distill llama 70b')) modelCode = 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B';
+    else if (lowerName.includes('qwen 2.5 coder 32b')) modelCode = 'Qwen/Qwen2.5-Coder-32B-Instruct';
+    else if (lowerName.includes('qwen 2.5 72b')) modelCode = 'Qwen/Qwen2.5-72B-Instruct';
+    else if (lowerName.includes('mistral small 24b')) modelCode = 'mistralai/Mistral-Small-24B-Instruct-2501';
+    else if (lowerName.includes('gemma 2 27b')) modelCode = 'google/gemma-2-27b-it';
+    else if (lowerName.includes('phi 3.5 mini')) modelCode = 'microsoft/Phi-3.5-mini-instruct';
+    else if (lowerName.includes('smollm2')) modelCode = 'HuggingFaceTB/SmolLM2-1.7B-Instruct';
+    else if (lowerName.includes('llama 3.1 8b')) modelCode = 'meta-llama/Llama-3.1-8B-Instruct';
+    else modelCode = name;
   } else if (provider === 'google') {
     const lower = raw.toLowerCase();
     if (lower.includes('pro')) modelCode = 'gemini-3.1-pro-preview';
@@ -639,6 +668,7 @@ export const BRAND_COLORS: Record<string, string> = {
   Anthropic: 'amber',
   OrcaRouter: 'cyan',
   OpenRouter: 'purple',
+  'Hugging Face': 'amber',
   Qwen: 'purple',
   'Moonshot AI': 'pink',
   DeepSeek: 'sky',
@@ -706,6 +736,7 @@ export function getBrandGroups(models: CatalogModel[] = getActiveCatalogModels()
     'Anthropic',
     'OrcaRouter',
     'OpenRouter',
+    'Hugging Face',
     'DeepSeek',
     'Qwen',
     'xAI',

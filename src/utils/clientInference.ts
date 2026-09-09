@@ -172,6 +172,9 @@ async function callOpenAICompatibleDirect(
     headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://dualblind.ai';
     headers['X-Title'] = 'DualBlind Multi-Agent Benchmark';
     headers['X-Router-Provider'] = 'OrcaRouter';
+  } else if (endpoint.includes('huggingface.co')) {
+    headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://dualblind.ai';
+    headers['X-Title'] = 'DualBlind Multi-Agent Benchmark';
   }
 
   const response = await fetch(endpoint, {
@@ -573,6 +576,33 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
     const res = await callOpenAICompatibleDirect(
       endpoint,
       apiKeys.orcarouter,
+      targetModel,
+      chatMessages,
+      agent.temperature ?? 0.4
+    );
+    textResult = res.text;
+    inputTokens = res.inputTokens;
+    outputTokens = res.outputTokens;
+    modelUsed = res.modelUsed;
+  } else if ((provider === 'huggingface' || provider === 'hf') && (apiKeys.huggingface || apiKeys.hfToken)) {
+    const hfToken = (apiKeys.huggingface || apiKeys.hfToken)!.trim();
+    let targetModel = agent.model.replace(/^huggingface\//i, '').replace(/^hf\//i, '').replace(/^hugging\s*face:\s*/i, '');
+    if (!targetModel.includes('/')) {
+      const lower = targetModel.toLowerCase();
+      if (lower.includes('llama 3.3 70b')) targetModel = 'meta-llama/Llama-3.3-70B-Instruct';
+      else if (lower.includes('deepseek r1 distill qwen 32b')) targetModel = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B';
+      else if (lower.includes('deepseek r1 distill llama 70b')) targetModel = 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B';
+      else if (lower.includes('qwen 2.5 coder 32b')) targetModel = 'Qwen/Qwen2.5-Coder-32B-Instruct';
+      else if (lower.includes('qwen 2.5 72b')) targetModel = 'Qwen/Qwen2.5-72B-Instruct';
+      else if (lower.includes('mistral small 24b')) targetModel = 'mistralai/Mistral-Small-24B-Instruct-2501';
+      else if (lower.includes('gemma 2 27b')) targetModel = 'google/gemma-2-27b-it';
+      else if (lower.includes('phi 3.5 mini')) targetModel = 'microsoft/Phi-3.5-mini-instruct';
+      else if (lower.includes('smollm2')) targetModel = 'HuggingFaceTB/SmolLM2-1.7B-Instruct';
+      else if (lower.includes('llama 3.1 8b')) targetModel = 'meta-llama/Llama-3.1-8B-Instruct';
+    }
+    const res = await callOpenAICompatibleDirect(
+      'https://router.huggingface.co/v1/chat/completions',
+      hfToken,
       targetModel,
       chatMessages,
       agent.temperature ?? 0.4

@@ -81,6 +81,16 @@ export function getOpenRouterApiKeys(): string[] {
   return parseApiKeysFromEnv('OPENROUTER_API_KEYS', 'OPENROUTER_API_KEY');
 }
 
+export function getHuggingFaceTokens(): string[] {
+  const hfTokens = parseApiKeysFromEnv('HF_TOKENS', 'HF_TOKEN');
+  const hfApiKeys = parseApiKeysFromEnv('HUGGINGFACE_API_KEYS', 'HUGGINGFACE_API_KEY');
+  const combined = [...hfTokens];
+  for (const k of hfApiKeys) {
+    if (!combined.includes(k)) combined.push(k);
+  }
+  return combined;
+}
+
 // In-memory store for benchmark run history and leaderboard records
 interface SavedRunRecord {
   id: string;
@@ -560,10 +570,13 @@ async function callOpenAICompatible(
   if (endpointUrl.includes('openrouter.ai')) {
     headers['HTTP-Referer'] = 'https://dual-blind.vercel.app';
     headers['X-Title'] = 'DualBlind AI Arena';
+  } else if (endpointUrl.includes('huggingface.co')) {
+    headers['HTTP-Referer'] = 'https://dual-blind.vercel.app';
+    headers['X-Title'] = 'DualBlind AI Arena';
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 55000);
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
   let res: Response;
   try {
     res = await fetch(endpointUrl, {
@@ -606,6 +619,16 @@ async function callOpenAICompatible(
       if (maxTokens > 256) {
         return callOpenAICompatible(endpointUrl, apiKey, modelName, messages, temperature, 256, retryCount + 1);
       }
+    }
+
+    if (
+      endpointUrl.includes('huggingface.co') &&
+      retryCount < 2 &&
+      (res.status === 503 || /loading/i.test(errorMessage) || /currently loading/i.test(errorMessage))
+    ) {
+      console.warn(`[Hugging Face] Model ${modelName} is currently warming up/loading; waiting 3s before retry...`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return callOpenAICompatible(endpointUrl, apiKey, modelName, messages, temperature, maxTokens, retryCount + 1);
     }
 
     throw new Error(`Provider API error (${res.status}): ${errorMessage}`);
@@ -1078,6 +1101,80 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         usage = openRouterRes.usageMetadata;
         modelUsed = openRouterRes.modelUsed;
       }
+    } else if (provider === 'huggingface' || provider === 'hf') {
+      let targetModel = agent.model.replace(/^huggingface\//i, '').replace(/^hf\//i, '').replace(/^hugging\s*face:\s*/i, '');
+      if (!targetModel.includes('/')) {
+        const lower = targetModel.toLowerCase();
+        if (lower.includes('llama 3.3 70b')) targetModel = 'meta-llama/Llama-3.3-70B-Instruct';
+        else if (lower.includes('deepseek r1 distill qwen 32b')) targetModel = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B';
+        else if (lower.includes('deepseek r1 distill llama 70b')) targetModel = 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B';
+        else if (lower.includes('qwen 2.5 coder 32b')) targetModel = 'Qwen/Qwen2.5-Coder-32B-Instruct';
+        else if (lower.includes('qwen 2.5 72b')) targetModel = 'Qwen/Qwen2.5-72B-Instruct';
+        else if (lower.includes('mistral small 24b')) targetModel = 'mistralai/Mistral-Small-24B-Instruct-2501';
+        else if (lower.includes('gemma 2 27b')) targetModel = 'google/gemma-2-27b-it';
+        else if (lower.includes('phi 3.5 mini')) targetModel = 'microsoft/Phi-3.5-mini-instruct';
+        else if (lower.includes('smollm2')) targetModel = 'HuggingFaceTB/SmolLM2-1.7B-Instruct';
+        else if (lower.includes('llama 3.1 8b')) targetModel = 'meta-llama/Llama-3.1-8B-Instruct';
+      }
+
+      const candidateHfKeys: string[] = [];
+      if (apiKeys?.huggingface) candidateHfKeys.push(apiKeys.huggingface);
+      if (apiKeys?.hfToken && !candidateHfKeys.includes(apiKeys.hfToken)) candidateHfKeys.push(apiKeys.hfToken);
+      if (Array.isArray(apiKeys?.huggingfaceKeys)) {
+        for (const k of apiKeys.huggingfaceKeys) {
+          if (k && !candidateHfKeys.includes(k)) candidateHfKeys.push(k);
+        }
+      }
+      for (const k of getHuggingFaceTokens()) {
+        if (!candidateHfKeys.includes(k)) candidateHfKeys.push(k);
+      }
+
+      if (candidateHfKeys.length === 0) {
+        if (requireLive) {
+          throw new Error(`No live Hugging Face token configured for model ${targetModel}.`);
+        }
+        console.warn(`[Hugging Face] No HF token found for ${targetModel}. Engaging synthetic analytical fallback.`);
+        const fallbackRes = generateSyntheticTurnFallback(problem, agent, partnerName, history || [], currentTurn || 0);
+        responseText = fallbackRes.text;
+        usage = fallbackRes.usageMetadata;
+        modelUsed = `${targetModel} (resilient-offline)`;
+      } else {
+        let hfRes: any = null;
+        let lastError: any = null;
+
+        for (let kIdx = 0; kIdx < candidateHfKeys.length; kIdx++) {
+          const currentKey = candidateHfKeys[kIdx];
+          try {
+            hfRes = await callOpenAICompatible(
+              'https://router.huggingface.co/v1/chat/completions',
+              currentKey,
+              targetModel,
+              chatMessages,
+              agent.temperature ?? 0.4
+            );
+            break;
+          } catch (error: any) {
+            lastError = error;
+            const message = error?.message || String(error);
+            const isRotatable = /429|rate limit|quota|too many requests|credits|unauthorized|401|timeout|timed out|abort/i.test(message);
+
+            if (isRotatable && kIdx < candidateHfKeys.length - 1) {
+              console.warn(`[Hugging Face Key Rotation] Key ${kIdx + 1}/${candidateHfKeys.length} failed (${message.substring(0, 80)}). Rotating to next HF token...`);
+              continue;
+            }
+
+            throw lastError;
+          }
+        }
+
+        if (!hfRes) {
+          throw lastError || new Error('Failed to obtain Hugging Face response across all available keys.');
+        }
+
+        responseText = hfRes.text;
+        usage = hfRes.usageMetadata;
+        modelUsed = hfRes.modelUsed;
+      }
     } else if (apiKeys?.orcarouter) {
       const endpoint = apiKeys.orcarouterEndpoint || process.env.ORCAROUTER_BASE_URL || 'https://api.orcarouter.com/v1/chat/completions';
       const targetModel = resolveOpenRouterModel(agent.model);
@@ -1402,6 +1499,7 @@ app.get('/api/leaderboard/status', (req, res) => {
 app.get('/api/benchmark/keys-status', (req, res) => {
   const geminiKeys = getGeminiApiKeys();
   const openRouterKeys = getOpenRouterApiKeys();
+  const hfTokens = getHuggingFaceTokens();
   res.json({
     gemini: {
       count: geminiKeys.length,
@@ -1417,7 +1515,14 @@ app.get('/api/benchmark/keys-status', (req, res) => {
         k.length > 12 ? `${k.substring(0, 9)}...${k.substring(k.length - 4)}` : '***'
       ),
     },
-    hasHfToken: Boolean(process.env.HF_TOKEN && process.env.HF_TOKEN.trim()),
+    huggingface: {
+      count: hfTokens.length,
+      configured: hfTokens.length > 0,
+      maskedKeys: hfTokens.map((k) =>
+        k.length > 8 ? `${k.substring(0, 4)}...${k.substring(k.length - 4)}` : '***'
+      ),
+    },
+    hasHfToken: Boolean(hfTokens.length > 0 || (process.env.HF_TOKEN && process.env.HF_TOKEN.trim())),
     hasOrcaRouterBaseUrl: Boolean(process.env.ORCAROUTER_BASE_URL && process.env.ORCAROUTER_BASE_URL.trim()),
     port: PORT,
   });

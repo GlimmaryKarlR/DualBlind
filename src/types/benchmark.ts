@@ -79,6 +79,7 @@ export interface AgentConfig {
     | 'cohere'
     | 'openrouter'
     | 'orcarouter'
+    | 'huggingface'
     | 'custom';
   isManualExternal?: boolean;
   customBrand?: string;
@@ -182,8 +183,13 @@ export interface ProviderApiKeys {
   microsoft?: string; // Azure / GitHub Models
   amazon?: string; // AWS Bedrock
   openrouter?: string; // OpenRouter universal key
+  openrouterKeys?: string[];
   orcarouter?: string; // OrcaRouter universal AI routing key
   orcarouterEndpoint?: string; // Optional custom OrcaRouter gateway URL
+  huggingface?: string; // Hugging Face access token
+  huggingfaceKeys?: string[]; // Multiple Hugging Face tokens for rotation
+  hfToken?: string; // Alternative alias for Hugging Face token
+  googleKeys?: string[]; // Multiple Gemini keys for rotation
   customEndpoint?: {
     baseUrl: string;
     apiKey: string;
