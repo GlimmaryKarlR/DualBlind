@@ -1161,11 +1161,19 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         let hfRes: any = null;
         let lastError: any = null;
 
+        const hfSpaceUrl = apiKeys?.hfSpaceUrl || process.env.HF_SPACE_URL || process.env.HUGGINGFACE_SPACE_URL;
+        let hfEndpoint = 'https://router.huggingface.co/v1/chat/completions';
+        if (hfSpaceUrl && hfSpaceUrl.trim()) {
+          const cleanSpaceUrl = hfSpaceUrl.trim().replace(/\/$/, '');
+          hfEndpoint = cleanSpaceUrl.includes('/v1') ? `${cleanSpaceUrl}/chat/completions` : `${cleanSpaceUrl}/v1/chat/completions`;
+          console.log(`[Hugging Face] Routing inference to custom HF Space: ${hfEndpoint}`);
+        }
+
         for (let kIdx = 0; kIdx < candidateHfKeys.length; kIdx++) {
           const currentKey = candidateHfKeys[kIdx];
           try {
             hfRes = await callOpenAICompatible(
-              'https://router.huggingface.co/v1/chat/completions',
+              hfEndpoint,
               currentKey,
               targetModel,
               chatMessages,
@@ -1178,11 +1186,11 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
 
             // If the model is not supported by router providers, attempt fallback to Llama 3.3 70B
             const isModelUnsupported = /not supported by any provider|model not found|no endpoints found/i.test(message);
-            if (isModelUnsupported && targetModel !== 'meta-llama/Llama-3.3-70B-Instruct') {
+            if (isModelUnsupported && targetModel !== 'meta-llama/Llama-3.3-70B-Instruct' && hfEndpoint.includes('router.huggingface.co')) {
               try {
                 console.warn(`[Hugging Face Router] ${targetModel} not supported by router; falling back to meta-llama/Llama-3.3-70B-Instruct.`);
                 hfRes = await callOpenAICompatible(
-                  'https://router.huggingface.co/v1/chat/completions',
+                  hfEndpoint,
                   currentKey,
                   'meta-llama/Llama-3.3-70B-Instruct',
                   chatMessages,
