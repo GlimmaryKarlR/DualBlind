@@ -23,7 +23,7 @@ if (fs.existsSync(envLocalPath)) {
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -740,13 +740,22 @@ async function callGeminiWithResilience(
   currentTurn: number,
   requireLive = false
 ): Promise<{ text: string; usageMetadata: any; modelUsed: string }> {
+  // Normalize model identifier to supported @google/genai models
+  const normalizeGoogleModel = (m?: string): string => {
+    if (!m) return 'gemini-2.5-flash';
+    const lower = m.toLowerCase();
+    if (lower.includes('1.5-flash') || lower.includes('3.6-flash') || lower.includes('3.7-flash')) return 'gemini-2.5-flash';
+    if (lower.includes('1.5-pro') || lower.includes('3.1-pro')) return 'gemini-2.5-pro';
+    return m;
+  };
+
+  const resolvedPrimary = normalizeGoogleModel(primaryModel);
   // Sequence of fallback models to ensure high availability
   const modelsToAttempt = [
-    primaryModel || 'gemini-3.6-flash',
-    'gemini-3.6-flash',
-    'gemini-3.7-flash',
-    'gemini-3.1-pro-preview',
-    'gemini-flash-latest',
+    resolvedPrimary,
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+    'gemini-2.0-flash',
   ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i); // Unique models
 
   const aiInstances: GoogleGenAI[] = Array.isArray(keysOrAi)
@@ -769,8 +778,12 @@ async function callGeminiWithResilience(
       if (keyHitQuota) break;
 
       for (let attempt = 1; attempt <= 2; attempt++) {
+        let timerId: ReturnType<typeof setTimeout> | null = null;
         try {
-          const callPromise = ai.models.generateContent({
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timerId = setTimeout(() => reject(new Error(`Gemini API call timed out after 50s for model ${modelName}`)), 50000);
+          });
+          const apiCall = ai.models.generateContent({
             model: modelName,
             contents: contents,
             config: {
@@ -778,11 +791,8 @@ async function callGeminiWithResilience(
               temperature: Math.min(1.0, Math.max(0.0, temperature ?? 0.4)),
             },
           });
-          const timerPromise = new Promise<never>((_, reject) => {
-            const timerId = setTimeout(() => reject(new Error(`Gemini API call timed out after 50s for model ${modelName}`)), 50000);
-            callPromise.finally(() => clearTimeout(timerId));
-          });
-          const response = await Promise.race([callPromise, timerPromise]);
+          const response = await Promise.race([apiCall, timeoutPromise]);
+          if (timerId) clearTimeout(timerId);
 
           if (response && response.text && response.text.trim().length > 0) {
             return {
@@ -792,6 +802,7 @@ async function callGeminiWithResilience(
             };
           }
         } catch (err: any) {
+          if (timerId) clearTimeout(timerId);
           lastError = err;
           const errMsg = err?.message || String(err);
           const isQuota =
@@ -1022,24 +1033,6 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       responseText = orcaRes.text;
       usage = orcaRes.usageMetadata;
       modelUsed = orcaRes.modelUsed;
-    } else if (provider === 'huggingface') {
-      const hfToken = apiKeys?.huggingface || process.env.HF_TOKEN;
-      if (!hfToken) {
-        throw new Error('No Hugging Face token (HF_TOKEN) configured.');
-      }
-
-      const targetModel = agent.model || 'meta-llama/Llama-3.3-70B-Instruct';
-      const hfRes = await callOpenAICompatible(
-        'https://router.huggingface.co/v1/chat/completions',
-        hfToken,
-        targetModel,
-        chatMessages,
-        agent.temperature ?? 0.4
-      );
-
-      responseText = hfRes.text;
-      usage = hfRes.usageMetadata;
-      modelUsed = hfRes.modelUsed;
     } else if (provider === 'openrouter') {
       const targetModel = resolveOpenRouterModel(agent.model);
       const candidateOpenRouterKeys: string[] = [];
@@ -1174,7 +1167,26 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
           } catch (error: any) {
             lastError = error;
             const message = error?.message || String(error);
-            const isRotatable = /429|rate limit|quota|too many requests|credits|unauthorized|401|timeout|timed out|abort/i.test(message);
+
+            // If the model is not supported by router providers, attempt fallback to Llama 3.3 70B
+            const isModelUnsupported = /not supported by any provider|model not found|no endpoints found/i.test(message);
+            if (isModelUnsupported && targetModel !== 'meta-llama/Llama-3.3-70B-Instruct') {
+              try {
+                console.warn(`[Hugging Face Router] ${targetModel} not supported by router; falling back to meta-llama/Llama-3.3-70B-Instruct.`);
+                hfRes = await callOpenAICompatible(
+                  'https://router.huggingface.co/v1/chat/completions',
+                  currentKey,
+                  'meta-llama/Llama-3.3-70B-Instruct',
+                  chatMessages,
+                  agent.temperature ?? 0.4
+                );
+                break;
+              } catch (fallbackErr: any) {
+                lastError = fallbackErr;
+              }
+            }
+
+            const isRotatable = /429|rate limit|quota|too many requests|credits|depleted|unauthorized|401|402|timeout|timed out|abort/i.test(message);
 
             if (isRotatable && kIdx < candidateHfKeys.length - 1) {
               console.warn(`[Hugging Face Key Rotation] Key ${kIdx + 1}/${candidateHfKeys.length} failed (${message.substring(0, 80)}). Rotating to next HF token...`);

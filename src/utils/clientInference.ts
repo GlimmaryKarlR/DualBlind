@@ -625,32 +625,39 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
     inputTokens = res.inputTokens;
     outputTokens = res.outputTokens;
     modelUsed = res.modelUsed;
-  } else if (provider === 'huggingface' && apiKeys.huggingface) {
+  } else if ((provider === 'huggingface' || provider === 'hf') && (apiKeys.huggingface || apiKeys.hfToken)) {
+    const hfKey = apiKeys.huggingface || apiKeys.hfToken || '';
     const targetModel = agent.model || 'meta-llama/Llama-3.3-70B-Instruct';
-    const res = await callOpenAICompatibleDirect(
-      'https://router.huggingface.co/v1/chat/completions',
-      apiKeys.huggingface,
-      targetModel,
-      chatMessages,
-      agent.temperature ?? 0.4
-    );
-    textResult = res.text;
-    inputTokens = res.inputTokens;
-    outputTokens = res.outputTokens;
-    modelUsed = res.modelUsed;
-  } else if (apiKeys.huggingface) {
-    const targetModel = agent.model || 'meta-llama/Llama-3.3-70B-Instruct';
-    const res = await callOpenAICompatibleDirect(
-      'https://router.huggingface.co/v1/chat/completions',
-      apiKeys.huggingface,
-      targetModel,
-      chatMessages,
-      agent.temperature ?? 0.4
-    );
-    textResult = res.text;
-    inputTokens = res.inputTokens;
-    outputTokens = res.outputTokens;
-    modelUsed = res.modelUsed;
+    try {
+      const res = await callOpenAICompatibleDirect(
+        'https://router.huggingface.co/v1/chat/completions',
+        hfKey,
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      textResult = res.text;
+      inputTokens = res.inputTokens;
+      outputTokens = res.outputTokens;
+      modelUsed = res.modelUsed;
+    } catch (hfErr: any) {
+      const msg = String(hfErr?.message || hfErr);
+      if (/not supported by any provider|model not found/i.test(msg) && targetModel !== 'meta-llama/Llama-3.3-70B-Instruct') {
+        const fallbackRes = await callOpenAICompatibleDirect(
+          'https://router.huggingface.co/v1/chat/completions',
+          hfKey,
+          'meta-llama/Llama-3.3-70B-Instruct',
+          chatMessages,
+          agent.temperature ?? 0.4
+        );
+        textResult = fallbackRes.text;
+        inputTokens = fallbackRes.inputTokens;
+        outputTokens = fallbackRes.outputTokens;
+        modelUsed = fallbackRes.modelUsed;
+      } else {
+        throw hfErr;
+      }
+    }
   } else if (apiKeys.openrouter) {
     // OpenRouter inference - directly surface errors if model crashes or fails
     const targetModel = resolveOpenRouterModel(agent.model);

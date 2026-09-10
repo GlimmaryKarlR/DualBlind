@@ -185,7 +185,6 @@ export interface ProviderApiKeys {
   openrouter?: string; // OpenRouter universal key
   openrouterKeys?: string[];
   orcarouter?: string; // OrcaRouter universal AI routing key
-  huggingface?: string; // Hugging Face serverless API token
   orcarouterEndpoint?: string; // Optional custom OrcaRouter gateway URL
   huggingface?: string; // Hugging Face access token
   huggingfaceKeys?: string[]; // Multiple Hugging Face tokens for rotation

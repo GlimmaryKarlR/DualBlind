@@ -89,7 +89,7 @@ def load_env_candidates():
                             k, v = line.split("=", 1)
                             k = k.strip()
                             v = v.strip().strip("'\"")
-                            if k and k not in os.environ:
+                            if k and (k not in os.environ or not os.environ[k].strip()):
                                 os.environ[k] = v
                 except Exception:
                     pass
@@ -98,9 +98,14 @@ def load_env_candidates():
 # Automatically load env candidates at startup
 load_env_candidates()
 
+# Default empty key pools (keys are safely read from environment variables or .env.local)
+DEFAULT_OPENROUTER_KEYS: list[str] = []
+DEFAULT_HF_TOKENS: list[str] = []
+DEFAULT_GEMINI_KEYS: list[str] = []
+
 
 def get_openrouter_keys(config: argparse.Namespace | None = None) -> list[str]:
-    """Return configured OpenRouter keys in rotation order from CLI, comma lists, and numbered env vars."""
+    """Return configured OpenRouter keys in rotation order from CLI, comma lists, env vars, and default pool."""
     keys: list[str] = []
     seen: set[str] = set()
 
@@ -129,11 +134,15 @@ def get_openrouter_keys(config: argparse.Namespace | None = None) -> list[str]:
         if env_name.startswith("OPENROUTER_API_KEY_"):
             add_candidates(os.environ.get(env_name))
 
+    # 5. Default embedded zero-cost keys
+    for k in DEFAULT_OPENROUTER_KEYS:
+        add_candidates(k)
+
     return keys
 
 
 def get_gemini_keys(config: argparse.Namespace | None = None) -> list[str]:
-    """Return configured Gemini/Google keys in rotation order from CLI, comma lists, and numbered env vars."""
+    """Return configured Gemini/Google keys in rotation order from CLI, comma lists, env vars, and default pool."""
     keys: list[str] = []
     seen: set[str] = set()
 
@@ -164,11 +173,15 @@ def get_gemini_keys(config: argparse.Namespace | None = None) -> list[str]:
         if env_name.startswith("GEMINI_API_KEY_") or env_name.startswith("GOOGLE_API_KEY_"):
             add_candidates(os.environ.get(env_name))
 
+    # 5. Default embedded zero-cost keys
+    for k in DEFAULT_GEMINI_KEYS:
+        add_candidates(k)
+
     return keys
 
 
 def get_huggingface_tokens(config: argparse.Namespace | None = None) -> list[str]:
-    """Return configured Hugging Face tokens in rotation order from CLI, comma lists, and env vars."""
+    """Return configured Hugging Face tokens in rotation order from CLI, comma lists, env vars, and default pool."""
     keys: list[str] = []
     seen: set[str] = set()
 
@@ -199,16 +212,48 @@ def get_huggingface_tokens(config: argparse.Namespace | None = None) -> list[str
         if env_name.startswith("HF_TOKEN_") or env_name.startswith("HUGGINGFACE_API_KEY_"):
             add_candidates(os.environ.get(env_name))
 
+    # 5. Default embedded token
+    for k in DEFAULT_HF_TOKENS:
+        add_candidates(k)
+
     return keys
 
 
 def probe_openrouter_key(api_key: str) -> tuple[bool, str]:
-    """Return whether an OpenRouter key can actually complete a minimal live request."""
+    """Return whether an OpenRouter key is authenticated and usable (supports both paid and free-tier accounts)."""
     if not api_key:
         return False, "empty key"
 
+    # Step 1: Query OpenRouter's /api/v1/auth/key to test authentication and inspect account status
+    auth_req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/auth/key",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "https://localhost",
+            "X-Title": "DualBlind startup check",
+            "User-Agent": "DualBlind-Headless-Runner/1.0",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(auth_req, timeout=12) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            parsed = json.loads(body)
+            data = parsed.get("data") or {}
+            if response.status == 200:
+                is_free_tier = data.get("is_free_tier", False) or (data.get("limit") is None and data.get("usage", 0) == 0)
+                if is_free_tier:
+                    return True, "free-tier (:free models)"
+                return True, "working"
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return False, f"Invalid or unauthorized OpenRouter key (HTTP {e.code})"
+    except Exception:
+        pass
+
+    # Step 2: Probe with a verified 100% free model (0 credits required)
     payload = {
-        "model": "openai/gpt-4o-mini",
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
         "messages": [{"role": "user", "content": "Reply with only OK"}],
         "max_tokens": 5,
     }
@@ -226,7 +271,7 @@ def probe_openrouter_key(api_key: str) -> tuple[bool, str]:
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=25) as response:
+        with urllib.request.urlopen(req, timeout=20) as response:
             body = response.read().decode("utf-8", errors="replace")
             parsed = json.loads(body)
             choices = parsed.get("choices") or []
@@ -240,7 +285,11 @@ def probe_openrouter_key(api_key: str) -> tuple[bool, str]:
             err_msg = parsed.get("error") or parsed.get("message") or body
             if isinstance(err_msg, dict):
                 err_msg = err_msg.get("message") or str(err_msg)
-            return False, str(err_msg)[:220]
+            msg_str = str(err_msg)
+            # If the error is only about purchased credits, the key is still 100% valid for free models!
+            if "never purchased credits" in msg_str.lower() or "insufficient credits" in msg_str.lower():
+                return True, "free-tier (:free models)"
+            return False, msg_str[:220]
         except Exception:
             return False, f"HTTP {e.code}: {str(e)}"[:220]
     except Exception as e:
@@ -248,7 +297,7 @@ def probe_openrouter_key(api_key: str) -> tuple[bool, str]:
 
 
 def prioritize_openrouter_keys(keys: list[str]) -> list[str]:
-    """Reorder keys so working credits-backed keys are used before blocked/expired ones."""
+    """Reorder keys so working keys (both paid and free-tier) are accepted and ordered before invalid ones."""
     if not keys:
         return []
 
@@ -259,7 +308,10 @@ def prioritize_openrouter_keys(keys: list[str]) -> list[str]:
         ok, reason = probe_openrouter_key(key)
         if ok:
             ordered.append(key)
-            print(f"{GREEN}✓ OpenRouter key accepted: {key[:12]}...{RESET}")
+            if "free-tier" in reason.lower():
+                print(f"{GREEN}✓ OpenRouter key accepted (Free Tier): {key[:12]}...{RESET}")
+            else:
+                print(f"{GREEN}✓ OpenRouter key accepted: {key[:12]}...{RESET}")
         else:
             failed.append((key, reason))
             print(f"{YELLOW}⚠ OpenRouter key skipped: {key[:12]}... ({reason}){RESET}")
@@ -309,7 +361,7 @@ def is_gemini_rotation_error(error: Exception) -> bool:
 
 
 def is_huggingface_rotation_error(error: Exception) -> bool:
-    """Identify errors that commonly mean a Hugging Face token is rate-limited, unauthorized, or exhausted."""
+    """Identify errors that commonly mean a Hugging Face token is rate-limited, exhausted, or rejected."""
     message = str(error).lower()
     return any(
         marker in message
@@ -320,6 +372,14 @@ def is_huggingface_rotation_error(error: Exception) -> bool:
             "too many requests",
             "unauthorized",
             "http 401",
+            "http 402",
+            "402",
+            "payment required",
+            "depleted",
+            "included credits",
+            "monthly included credits",
+            "purchase pre-paid credits",
+            "not supported by any provider",
             "quota",
             "exceeded",
         )
@@ -548,9 +608,9 @@ VERIFIED_FREE_MODELS = [
         "family": "Google",
     },
     {
-        "model": "gemini-1.5-flash",
+        "model": "gemini-2.5-pro",
         "provider": "google",
-        "name": "Gemini 1.5 Flash",
+        "name": "Gemini 2.5 Pro",
         "family": "Google",
     },
     # Hugging Face Serverless Free Tier Models
@@ -579,22 +639,22 @@ VERIFIED_FREE_MODELS = [
         "family": "Qwen",
     },
     {
-        "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+        "model": "meta-llama/Llama-3.1-8B-Instruct",
         "provider": "huggingface",
-        "name": "Mistral Small 24B (Hugging Face)",
-        "family": "Mistral",
+        "name": "Llama 3.1 8B (Hugging Face)",
+        "family": "Meta",
     },
     {
-        "model": "google/gemma-2-27b-it",
+        "model": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         "provider": "huggingface",
-        "name": "Gemma 2 27B (Hugging Face)",
+        "name": "DeepSeek R1 Distill Llama 70B (Hugging Face)",
+        "family": "DeepSeek",
+    },
+    {
+        "model": "google/gemma-3-27b-it",
+        "provider": "huggingface",
+        "name": "Gemma 3 27B (Hugging Face)",
         "family": "Google",
-    },
-    {
-        "model": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
-        "provider": "huggingface",
-        "name": "SmolLM2 1.7B (Hugging Face)",
-        "family": "HuggingFace",
     },
 ]
 
@@ -678,25 +738,28 @@ def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dic
         has_google_key = bool(config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
         if not has_google_key:
             pool = [m for m in pool if m["provider"] != "google"]
-            if provider_filter != "google":
-                openrouter_keys = get_openrouter_keys(config)
-                live_models = get_live_openrouter_free_models(openrouter_keys[0] if openrouter_keys else "")
-                if len(live_models) >= 2:
-                    pool = live_models
-                else:
-                    pool = [m for m in pool if m["model"] == "openrouter/free"]
+        if provider_filter in ("all", "openrouter", "routers", "both", "free-routers"):
+            openrouter_keys = get_openrouter_keys(config)
+            live_models = get_live_openrouter_free_models(openrouter_keys[0] if openrouter_keys else "")
+            if live_models:
+                existing_models = {m["model"] for m in pool}
+                for lm in live_models:
+                    if lm["model"] not in existing_models:
+                        pool.append(lm)
     else:
         pool = list(PAID_MODEL_POOL)
         has_google_key = bool(config.google_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
         if not has_google_key and provider_filter != "google":
             pool = [m for m in pool if m["provider"] != "google"]
 
-    if provider_filter == "openrouter":
+    if provider_filter in ("openrouter", "or"):
         pool = [m for m in pool if m["provider"] == "openrouter"]
-    elif provider_filter == "google":
+    elif provider_filter in ("google", "gemini"):
         pool = [m for m in pool if m["provider"] == "google"]
     elif provider_filter in ("huggingface", "hf"):
         pool = [m for m in pool if m["provider"] == "huggingface"]
+    elif provider_filter in ("routers", "both", "free-routers", "openrouter,huggingface", "openrouter,hf", "hf,openrouter"):
+        pool = [m for m in pool if m["provider"] in ("openrouter", "huggingface")]
 
     if not pool:
         pool = list(VERIFIED_FREE_MODELS if force_free else PAID_MODEL_POOL)
@@ -840,8 +903,10 @@ def run_trial(
                 res = post_json(f"{base_url}/api/benchmark/generate-turn", turn_payload, timeout=turn_timeout)
                 break
             except Exception as turn_error:
-                # 1. Check for OpenRouter key quota/rate-limit rotation
-                if openrouter_keys and (openrouter_key_index + 1) < len(openrouter_keys) and is_openrouter_rotation_error(turn_error):
+                turn_provider = current_agent.get("provider", "").lower()
+
+                # 1. Check for OpenRouter key quota/rate-limit rotation if current agent uses OpenRouter
+                if "openrouter" in turn_provider and openrouter_keys and (openrouter_key_index + 1) < len(openrouter_keys) and is_openrouter_rotation_error(turn_error):
                     openrouter_key_index += 1
                     api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
                     turn_payload["apiKeys"] = api_keys
@@ -850,8 +915,8 @@ def run_trial(
                     )
                     continue
 
-                # 2. Check for Gemini key quota/rate-limit rotation
-                if gemini_keys and (gemini_key_index + 1) < len(gemini_keys) and is_gemini_rotation_error(turn_error):
+                # 2. Check for Gemini key quota/rate-limit rotation if current agent uses Google/Gemini
+                if ("google" in turn_provider or "gemini" in turn_provider) and gemini_keys and (gemini_key_index + 1) < len(gemini_keys) and is_gemini_rotation_error(turn_error):
                     gemini_key_index += 1
                     api_keys["google"] = gemini_keys[gemini_key_index]
                     turn_payload["apiKeys"] = api_keys
@@ -860,8 +925,8 @@ def run_trial(
                     )
                     continue
 
-                # 3. Check for Hugging Face token rate-limit rotation
-                if hf_tokens and (hf_token_index + 1) < len(hf_tokens) and is_huggingface_rotation_error(turn_error):
+                # 3. Check for Hugging Face token rate-limit rotation if current agent uses Hugging Face
+                if ("huggingface" in turn_provider or "hf" in turn_provider) and hf_tokens and (hf_token_index + 1) < len(hf_tokens) and is_huggingface_rotation_error(turn_error):
                     hf_token_index += 1
                     api_keys["huggingface"] = hf_tokens[hf_token_index]
                     api_keys["hfToken"] = hf_tokens[hf_token_index]
@@ -1238,7 +1303,12 @@ def main():
     parser.add_argument("--openai-key", default=None, help="OpenAI API Key (default: OPENAI_API_KEY from environment or .env)")
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")
     parser.add_argument("--deepseek-key", default=None, help="DeepSeek API Key (default: DEEPSEEK_API_KEY from environment or .env)")
-    parser.add_argument("--provider", default="all", choices=["all", "openrouter", "google", "huggingface"], help="Provider pool: all (mix OpenRouter, Google & Hugging Face), openrouter, google, or huggingface (default: all)")
+    parser.add_argument(
+        "--provider",
+        default="all",
+        choices=["all", "openrouter", "google", "huggingface", "hf", "routers", "both"],
+        help="Provider pool: all (mix OpenRouter, Google & Hugging Face), routers/both (OpenRouter & Hugging Face only), openrouter, google, or huggingface (default: all)",
+    )
     parser.add_argument("--force-free", dest="force_free", action="store_true", default=True, help="Force 100%% free models only (default: True)")
     parser.add_argument("--allow-paid", dest="force_free", action="store_false", help="Allow paid non-free models")
     parser.add_argument("--random-models", dest="random_models", action="store_true", default=True, help="Use multiple models at random for each trial (default: True)")
@@ -1280,6 +1350,7 @@ def main():
     if resolved_openrouter_keys:
         os.environ["OPENROUTER_API_KEY"] = resolved_openrouter_keys[0]
         os.environ["OPENROUTER_API_KEYS"] = ",".join(resolved_openrouter_keys)
+    resolved_hf_tokens = get_huggingface_tokens(args)
 
     print(f"{BOLD}{GREEN}======================================================{RESET}")
     print(f"{BOLD}{GREEN}   DualBlind AI Arena - Autonomous Headless Runner   {RESET}")
@@ -1287,7 +1358,7 @@ def main():
     print(f"Target Server:   {CYAN}{args.url}{RESET}")
     print(f"Cost Policy:     {BOLD}{GREEN}100% FREE ONLY (Enforced Zero-Cost){RESET}" if args.force_free else f"{YELLOW}Paid & Free Models Allowed{RESET}")
     print(f"Model Selection: {BOLD}{MAGENTA}Randomized Multi-Model Deliberations{RESET}" if args.random_models else f"Fixed: {args.model_a} vs {args.model_b}")
-    print(f"Provider Scope:  {BOLD}{CYAN}{args.provider.upper()}{RESET} ({'OpenRouter (:free) & Google Flash' if args.provider == 'all' else args.provider})")
+    print(f"Provider Scope:  {BOLD}{CYAN}{args.provider.upper()}{RESET} ({'OpenRouter (:free), Google Flash & HF' if args.provider == 'all' else args.provider})")
     print(f"Suite Filter:    {args.suite}")
     print(f"Protocol:        {'Uncapped Deliberation' if args.uncapped else f'Max {args.max_turns} turns'}")
     print(f"Keys Detected:")
@@ -1297,11 +1368,23 @@ def main():
         if resolved_openrouter_keys
         else f"  • OpenRouter (Universal): {YELLOW}○ None detected (Free tier / server fallback active){RESET}"
     )
+    print(
+        f"  • Hugging Face:         {GREEN}✓ Loaded ({len(resolved_hf_tokens)} token{'s' if len(resolved_hf_tokens) != 1 else ''}, rotating on quota/rate limits){RESET}"
+        if resolved_hf_tokens
+        else f"  • Hugging Face:         {YELLOW}○ None detected (HF_TOKEN / --hf-token){RESET}"
+    )
     print(f"Self-Healing:    Active (Auto-restart on any fatal network or API drop)")
     print(f"Local Backup:    arena_runs_local.jsonl")
     print(f"{GREEN}------------------------------------------------------{RESET}\n")
 
-    if not resolved_google_key and not resolved_openrouter_keys and "localhost" not in args.url:
+    if args.provider in ("huggingface", "hf") and not resolved_hf_tokens:
+        print(f"{YELLOW}[!] Notice: Running --provider huggingface with no local HF token detected.{RESET}")
+        print(f"    Provide your Hugging Face user access token via:")
+        print(f"    {CYAN}python3 scripts/arena_runner.py --hf-token hf_... --provider huggingface --url {args.url}{RESET}")
+        print(f"    Note: Hugging Face router includes $0.10 monthly credits for free accounts.")
+        print(f"    For 100% free unlimited runs, OpenRouter with free models is recommended:")
+        print(f"    {CYAN}python3 scripts/arena_runner.py --provider openrouter --force-free --url {args.url}{RESET}\n")
+    elif not resolved_google_key and not resolved_openrouter_keys and "localhost" not in args.url:
         print(f"{YELLOW}[i] Pro-tip for Remote Server runs:{RESET}")
         print(f"    Pass your key directly on the CLI:")
         print(f"    {CYAN}python3 arena_runner.py --url {args.url} --openrouter-key YOUR_OPENROUTER_KEY{RESET}")

@@ -4,12 +4,27 @@ dist/
 coverage/
 .DS_Store
 *.log
+
+# Environment variables & local credentials
+.env
+.env.local
+.env.*
 .env*
 !.env.example
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local data, caches & scratch files
 archive/
 /graphics
 working.txt
 keys.py
+smalltest
+credtest.py
 arena_runs_local.jsonl
 leaderboard_cache.json
 /data
