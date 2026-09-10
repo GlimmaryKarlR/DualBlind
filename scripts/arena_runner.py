@@ -736,6 +736,37 @@ VERIFIED_FREE_MODELS = [
         "name": "Gemma 3 27B (Hugging Face)",
         "family": "Google",
     },
+    # Ollama Local Models (100% Free & Local)
+    {
+        "model": "ollama/llama3.1:8b",
+        "provider": "ollama",
+        "name": "Llama 3.1 8B (Ollama Local)",
+        "family": "Meta",
+    },
+    {
+        "model": "ollama/deepseek-r1:8b",
+        "provider": "ollama",
+        "name": "DeepSeek R1 8B (Ollama Local)",
+        "family": "DeepSeek",
+    },
+    {
+        "model": "ollama/qwen2.5-coder:7b",
+        "provider": "ollama",
+        "name": "Qwen 2.5 Coder 7B (Ollama Local)",
+        "family": "Qwen",
+    },
+    {
+        "model": "ollama/gemma2:9b",
+        "provider": "ollama",
+        "name": "Gemma 2 9B (Ollama Local)",
+        "family": "Google",
+    },
+    {
+        "model": "ollama/smollm2:1.7b",
+        "provider": "ollama",
+        "name": "SmolLM2 1.7B (Ollama Local)",
+        "family": "HuggingFaceTB",
+    },
 ]
 
 
@@ -838,6 +869,8 @@ def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dic
         pool = [m for m in pool if m["provider"] == "google"]
     elif provider_filter in ("huggingface", "hf"):
         pool = [m for m in pool if m["provider"] == "huggingface"]
+    elif provider_filter == "ollama":
+        pool = [m for m in pool if m["provider"] == "ollama"]
     elif provider_filter in ("routers", "both", "free-routers", "openrouter,huggingface", "openrouter,hf", "hf,openrouter"):
         pool = [m for m in pool if m["provider"] in ("openrouter", "huggingface")]
 
@@ -1418,8 +1451,8 @@ def main():
     parser.add_argument(
         "--provider",
         default="all",
-        choices=["all", "openrouter", "google", "huggingface", "hf", "routers", "both"],
-        help="Provider pool: all (mix OpenRouter, Google & Hugging Face), routers/both (OpenRouter & Hugging Face only), openrouter, google, or huggingface (default: all)",
+        choices=["all", "openrouter", "google", "huggingface", "hf", "ollama", "routers", "both"],
+        help="Provider pool: all, openrouter, google, huggingface, or ollama (default: all)",
     )
     parser.add_argument("--force-free", dest="force_free", action="store_true", default=True, help="Force 100%% free models only (default: True)")
     parser.add_argument("--allow-paid", dest="force_free", action="store_false", help="Allow paid non-free models")

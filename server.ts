@@ -1221,6 +1221,21 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         usage = hfRes.usageMetadata;
         modelUsed = hfRes.modelUsed;
       }
+    } else if (provider === 'ollama' || (agent.model && agent.model.startsWith('ollama/'))) {
+      const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1';
+      const endpoint = `${ollamaBaseUrl.replace(/\/$/, '')}/chat/completions`;
+      const targetModel = agent.model.replace(/^ollama\//i, '');
+      console.log(`[Ollama] Executing local model '${targetModel}' via ${endpoint}`);
+      const ollamaRes = await callOpenAICompatible(
+        endpoint,
+        'ollama',
+        targetModel,
+        chatMessages,
+        agent.temperature ?? 0.4
+      );
+      responseText = ollamaRes.text;
+      usage = ollamaRes.usageMetadata;
+      modelUsed = `ollama:${targetModel}`;
     } else if (apiKeys?.orcarouter) {
       const endpoint = apiKeys.orcarouterEndpoint || process.env.ORCAROUTER_BASE_URL || 'https://api.orcarouter.com/v1/chat/completions';
       const targetModel = resolveOpenRouterModel(agent.model);
