@@ -16,6 +16,12 @@ if ! command -v ollama &> /dev/null; then
     exit 1
 fi
 
+# Auto-detect external drive location
+if [ -d "/Volumes/My Passport/MODELS" ]; then
+    export OLLAMA_MODELS="/Volumes/My Passport/MODELS"
+    echo "📂 Storing models on external drive: $OLLAMA_MODELS"
+fi
+
 echo "✓ Ollama detected! Starting model downloads..."
 echo ""
 
