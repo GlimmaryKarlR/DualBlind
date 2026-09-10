@@ -453,6 +453,50 @@ def get_json(url: str, timeout: int = 30) -> dict:
         raise RuntimeError(f"HTTP {e.code}: {err_msg}") from None
 
 
+def countdown_pause(duration_seconds: int, reason: str = "") -> None:
+    """Pause execution for duration_seconds with a live updating terminal countdown and clean Ctrl+C handling."""
+    global RUNNING
+    if duration_seconds <= 0 or not RUNNING:
+        return
+
+    mins = duration_seconds // 60
+    secs = duration_seconds % 60
+    time_str = f"{mins}m {secs:02d}s" if mins > 0 else f"{secs}s"
+
+    print(f"\n{BOLD}{CYAN}{'='*80}{RESET}")
+    print(f"{BOLD}{YELLOW}⏸  COOLDOWN PAUSE: {time_str}{RESET}")
+    if reason:
+        print(f"{CYAN}   Reason:{RESET} {reason}")
+    print(f"{DIM}   Pausing to prevent provider rate limits / burst throttling. Press Ctrl+C to stop.{RESET}")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}", flush=True)
+
+    start_time = time.time()
+    end_time = start_time + duration_seconds
+
+    try:
+        while RUNNING:
+            remaining = int(end_time - time.time() + 0.99)
+            if remaining <= 0:
+                break
+            rem_m = remaining // 60
+            rem_s = remaining % 60
+            progress = max(0.0, min(1.0, (duration_seconds - remaining) / float(duration_seconds)))
+            bar_len = 24
+            filled = int(progress * bar_len)
+            bar = "█" * filled + "░" * (bar_len - filled)
+            sys.stdout.write(
+                f"\r{CYAN}   ⏳ Resuming in {BOLD}{rem_m:02d}:{rem_s:02d}{RESET}{CYAN} [{bar}] ({remaining}s remaining)...{RESET}   "
+            )
+            sys.stdout.flush()
+            time.sleep(1)
+        if RUNNING:
+            sys.stdout.write(f"\r{GREEN}   ✓ Cooldown complete! Restarting and resuming benchmark runs now...{' '*20}\n\n{RESET}")
+            sys.stdout.flush()
+    except KeyboardInterrupt:
+        RUNNING = False
+        print(f"\n{YELLOW}[!] User interrupted cooldown pause. Exiting cleanly.{RESET}")
+
+
 def get_live_openrouter_free_models(api_key: str) -> list[dict]:
     """Load currently available zero-cost OpenRouter model IDs."""
     if not api_key:
@@ -1324,10 +1368,31 @@ def main():
     parser.add_argument("--uncapped", action="store_true", help="Run in uncapped mode until natural consensus or loop cap")
     parser.add_argument("--count", type=int, default=0, help="Number of benchmark trials to run (0 for infinite loop)")
     parser.add_argument("--delay", type=float, default=2.0, help="Cooling delay in seconds between trials (default: 2.0)")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=5,
+        help="Number of benchmark trials to run before taking a cooldown pause (default: 5)",
+    )
+    parser.add_argument(
+        "--batch-pause",
+        type=int,
+        default=120,
+        help="Cooldown pause duration in seconds after every batch of runs (default: 120s / 2 minutes)",
+    )
+    parser.add_argument(
+        "--pause-minutes",
+        type=float,
+        default=None,
+        help="Alternative flag to set cooldown pause in minutes (e.g. --pause-minutes 2)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Print full conversational transcripts for each agent turn")
     parser.add_argument("--restart-delay", type=int, default=8, help="Seconds to wait before auto-restarting on fatal crash (default: 8)")
 
     args = parser.parse_args()
+
+    if args.pause_minutes is not None:
+        args.batch_pause = max(5, int(args.pause_minutes * 60))
 
     if args.list_free_models:
         print(f"\n{BOLD}{CYAN}DualBlind Arena - Verified 100% Free Models Catalog:{RESET}")
@@ -1361,6 +1426,8 @@ def main():
     print(f"Provider Scope:  {BOLD}{CYAN}{args.provider.upper()}{RESET} ({'OpenRouter (:free), Google Flash & HF' if args.provider == 'all' else args.provider})")
     print(f"Suite Filter:    {args.suite}")
     print(f"Protocol:        {'Uncapped Deliberation' if args.uncapped else f'Max {args.max_turns} turns'}")
+    batch_mins = args.batch_pause / 60.0
+    print(f"Batch Cooldown:  Pause {args.batch_pause}s ({batch_mins:.1f}m) after every {args.batch_size} runs")
     print(f"Keys Detected:")
     print(f"  • Google (Gemini):     {GREEN}✓ Loaded (Active){RESET}" if resolved_google_key else f"  • Google (Gemini):     {YELLOW}○ None detected in environment{RESET}")
     print(
@@ -1405,24 +1472,68 @@ def main():
                         break
                     trial_counter += 1
 
+                    trial_succeeded = False
+                    cooldown_performed = False
+
                     try:
                         run_trial(args.url, problem, args, trial_counter)
+                        trial_succeeded = True
                     except Exception as trial_err:
                         err_str = str(trial_err)
                         print(f"\n{YELLOW}[!] Warning: Trial #{trial_counter} encountered: {err_str}{RESET}")
-                        if "free-models-per-day" in err_str.lower() and len(resolved_openrouter_keys) <= 1:
-                            print(f"{RED}{BOLD}    [STOP] OpenRouter's free-model quota is exhausted. Use a different key, wait for reset, or add credits.{RESET}")
-                            RUNNING = False
-                            break
-                        if "GEMINI_API_KEY" in err_str:
-                            print(f"{YELLOW}    [→] Missing API Key: Pass --api-key YOUR_KEY or set export GEMINI_API_KEY=YOUR_KEY{RESET}")
-                        print(f"{DIM}    Continuing to next problem in {args.delay}s...{RESET}")
+                        is_rate_or_quota = any(
+                            marker in err_str.lower()
+                            for marker in (
+                                "depleted your monthly included credits",
+                                "402",
+                                "payment required",
+                                "429",
+                                "rate limit",
+                                "rate-limit",
+                                "too many requests",
+                                "free-models-per-day",
+                                "quota",
+                                "credits",
+                                "resourceexhausted",
+                                "503",
+                                "loading",
+                            )
+                        )
+
+                        if is_rate_or_quota:
+                            mins = args.batch_pause // 60
+                            secs = args.batch_pause % 60
+                            dur_str = f"{mins}m {secs:02d}s" if mins > 0 else f"{secs}s"
+                            print(f"\n{YELLOW}{BOLD}    [RATE LIMIT / BURST COOLDOWN TRIGGERED]{RESET}")
+                            print(f"{YELLOW}    Encountered provider rate limit or quota window on trial #{trial_counter}.{RESET}")
+                            print(f"{CYAN}    Pausing for {dur_str} to refresh rate limit buckets before auto-restarting and resuming...{RESET}")
+                            if "depleted your monthly included credits" in err_str.lower() or "(402)" in err_str:
+                                print(f"{DIM}    (Tip: You can also switch to Google's free tier with --provider google --force-free){RESET}")
+                            countdown_pause(
+                                args.batch_pause,
+                                reason=f"Provider rate-limit cooldown after trial #{trial_counter}. Auto-restarting in {dur_str}...",
+                            )
+                            cooldown_performed = True
+                        else:
+                            if "GEMINI_API_KEY" in err_str:
+                                print(f"{YELLOW}    [→] Missing API Key: Pass --api-key YOUR_KEY or set export GEMINI_API_KEY=YOUR_KEY{RESET}")
+                            print(f"{DIM}    Continuing to next problem in {args.delay}s...{RESET}")
+                            time.sleep(args.delay)
 
                     if args.count > 0 and trial_counter >= args.count:
                         print(f"\n{BOLD}{GREEN}✓ Target trial count of {args.count} completed successfully.{RESET}")
                         return
 
-                    if RUNNING and args.delay > 0:
+                    # Batch Cooldown: Pause for a couple of minutes after every 5 runs and restart
+                    if RUNNING and args.batch_size > 0 and (trial_counter % args.batch_size == 0) and not cooldown_performed:
+                        mins = args.batch_pause // 60
+                        secs = args.batch_pause % 60
+                        dur_str = f"{mins}m {secs:02d}s" if mins > 0 else f"{secs}s"
+                        countdown_pause(
+                            args.batch_pause,
+                            reason=f"Completed batch of {args.batch_size} trials (Total runs: {trial_counter}). Cooling down for {dur_str} before starting next batch.",
+                        )
+                    elif RUNNING and args.delay > 0 and trial_succeeded:
                         time.sleep(args.delay)
 
         except KeyboardInterrupt:
