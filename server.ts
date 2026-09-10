@@ -1140,6 +1140,14 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         if (!candidateHfKeys.includes(k)) candidateHfKeys.push(k);
       }
 
+      // Randomize token order to prevent rate-limiting on key #1 after 5 runs
+      if (candidateHfKeys.length > 1) {
+        for (let i = candidateHfKeys.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [candidateHfKeys[i], candidateHfKeys[j]] = [candidateHfKeys[j], candidateHfKeys[i]];
+        }
+      }
+
       if (candidateHfKeys.length === 0) {
         if (requireLive) {
           throw new Error(`No live Hugging Face token configured for model ${targetModel}.`);

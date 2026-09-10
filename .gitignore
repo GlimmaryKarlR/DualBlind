@@ -5,12 +5,12 @@ coverage/
 .DS_Store
 *.log
 
-# Environment variables & local credentials
+# Environment variables & local credentials (ignore ALL .env files)
+.env*
 .env
 .env.local
-.env.*
-.env*
-!.env.example
+.env.example
+.env.development
 
 # Python cache & bytecode
 __pycache__/
@@ -18,13 +18,16 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
-# Local data, caches & scratch files
+# Local data, archives, caches & jsonl runs
 archive/
-/graphics
+/archive
+arena_runs*
+*.jsonl
+leaderboard_cache.json
+**/leaderboard_cache.json
+/data
+graphics/
 working.txt
 keys.py
 smalltest
 credtest.py
-arena_runs_local.jsonl
-leaderboard_cache.json
-/data

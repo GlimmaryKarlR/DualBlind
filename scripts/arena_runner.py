@@ -75,6 +75,19 @@ def load_env_candidates():
     candidate_names = [".env.local", ".env", ".env.development"]
     loaded = []
 
+    mergeable_keys = {
+        "HF_TOKEN",
+        "HF_TOKENS",
+        "HUGGINGFACE_API_KEY",
+        "HUGGINGFACE_API_KEYS",
+        "GEMINI_API_KEY",
+        "GEMINI_API_KEYS",
+        "GOOGLE_API_KEY",
+        "GOOGLE_API_KEYS",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_API_KEYS",
+    }
+
     for d in search_dirs:
         for name in candidate_names:
             p = os.path.normpath(os.path.join(d, name))
@@ -89,8 +102,17 @@ def load_env_candidates():
                             k, v = line.split("=", 1)
                             k = k.strip()
                             v = v.strip().strip("'\"")
-                            if k and (k not in os.environ or not os.environ[k].strip()):
+                            if not k or not v:
+                                continue
+                            if k not in os.environ or not os.environ[k].strip():
                                 os.environ[k] = v
+                            elif k in mergeable_keys:
+                                existing_items = [x.strip() for x in os.environ[k].split(",") if x.strip()]
+                                new_items = [x.strip() for x in v.split(",") if x.strip()]
+                                for item in new_items:
+                                    if item not in existing_items:
+                                        existing_items.append(item)
+                                os.environ[k] = ",".join(existing_items)
                 except Exception:
                     pass
 
@@ -103,8 +125,13 @@ DEFAULT_OPENROUTER_KEYS: list[str] = []
 DEFAULT_HF_TOKENS: list[str] = []
 DEFAULT_GEMINI_KEYS: list[str] = []
 
+# Dynamic runtime blacklists for depleted/exhausted keys
+EXHAUSTED_HF_TOKENS: set[str] = set()
+EXHAUSTED_OPENROUTER_KEYS: set[str] = set()
+EXHAUSTED_GEMINI_KEYS: set[str] = set()
 
-def get_openrouter_keys(config: argparse.Namespace | None = None) -> list[str]:
+
+def get_openrouter_keys(config: argparse.Namespace | None = None, include_exhausted: bool = False) -> list[str]:
     """Return configured OpenRouter keys in rotation order from CLI, comma lists, env vars, and default pool."""
     keys: list[str] = []
     seen: set[str] = set()
@@ -138,10 +165,13 @@ def get_openrouter_keys(config: argparse.Namespace | None = None) -> list[str]:
     for k in DEFAULT_OPENROUTER_KEYS:
         add_candidates(k)
 
+    if not include_exhausted:
+        keys = [k for k in keys if k not in EXHAUSTED_OPENROUTER_KEYS]
+
     return keys
 
 
-def get_gemini_keys(config: argparse.Namespace | None = None) -> list[str]:
+def get_gemini_keys(config: argparse.Namespace | None = None, include_exhausted: bool = False) -> list[str]:
     """Return configured Gemini/Google keys in rotation order from CLI, comma lists, env vars, and default pool."""
     keys: list[str] = []
     seen: set[str] = set()
@@ -177,10 +207,13 @@ def get_gemini_keys(config: argparse.Namespace | None = None) -> list[str]:
     for k in DEFAULT_GEMINI_KEYS:
         add_candidates(k)
 
+    if not include_exhausted:
+        keys = [k for k in keys if k not in EXHAUSTED_GEMINI_KEYS]
+
     return keys
 
 
-def get_huggingface_tokens(config: argparse.Namespace | None = None) -> list[str]:
+def get_huggingface_tokens(config: argparse.Namespace | None = None, include_exhausted: bool = False) -> list[str]:
     """Return configured Hugging Face tokens in rotation order from CLI, comma lists, env vars, and default pool."""
     keys: list[str] = []
     seen: set[str] = set()
@@ -215,6 +248,9 @@ def get_huggingface_tokens(config: argparse.Namespace | None = None) -> list[str
     # 5. Default embedded token
     for k in DEFAULT_HF_TOKENS:
         add_candidates(k)
+
+    if not include_exhausted:
+        keys = [k for k in keys if k not in EXHAUSTED_HF_TOKENS]
 
     return keys
 
@@ -927,6 +963,26 @@ def run_trial(
             for t in turns_data
         ]
 
+        turn_provider = current_agent.get("provider", "").lower()
+
+        # Randomize Hugging Face token selection and introduce random timing intervals to prevent rate limits
+        if ("huggingface" in turn_provider or "hf" in turn_provider):
+            valid_hf_tokens = get_huggingface_tokens(config, include_exhausted=False)
+            if valid_hf_tokens:
+                random_hf_token = random.choice(valid_hf_tokens)
+                api_keys["huggingface"] = random_hf_token
+                api_keys["hfToken"] = random_hf_token
+                api_keys["huggingfaceKeys"] = valid_hf_tokens
+
+                min_delay = getattr(config, "hf_min_delay", 1.0) or 1.0
+                max_delay = getattr(config, "hf_max_delay", 3.5) or 3.5
+                if max_delay >= min_delay > 0:
+                    random_delay = random.uniform(min_delay, max_delay)
+                    if getattr(config, "verbose", False):
+                        masked_token = f"...{random_hf_token[-6:]}" if len(random_hf_token) > 6 else "hf_***"
+                        print(f"{CYAN}[HuggingFace] Selected random token ({masked_token}). Pausing {random_delay:.2f}s before request...{RESET}")
+                    time.sleep(random_delay)
+
         turn_payload = {
             "problem": problem,
             "agent": current_agent,
@@ -950,69 +1006,79 @@ def run_trial(
                 turn_provider = current_agent.get("provider", "").lower()
 
                 # 1. Check for OpenRouter key quota/rate-limit rotation if current agent uses OpenRouter
-                if "openrouter" in turn_provider and openrouter_keys and (openrouter_key_index + 1) < len(openrouter_keys) and is_openrouter_rotation_error(turn_error):
-                    openrouter_key_index += 1
-                    api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
-                    turn_payload["apiKeys"] = api_keys
-                    print(
-                        f"{YELLOW}[!] OpenRouter key {openrouter_key_index + 1}/{len(openrouter_keys)} selected after quota/rate-limit error. Retrying turn...{RESET}"
-                    )
-                    continue
+                if "openrouter" in turn_provider and is_openrouter_rotation_error(turn_error):
+                    failing_or_key = api_keys.get("openrouter")
+                    if failing_or_key:
+                        EXHAUSTED_OPENROUTER_KEYS.add(failing_or_key)
+                    valid_or_keys = get_openrouter_keys(config, include_exhausted=False)
+                    if valid_or_keys:
+                        next_or_key = random.choice(valid_or_keys)
+                        api_keys["openrouter"] = next_or_key
+                        turn_payload["apiKeys"] = api_keys
+                        print(
+                            f"{YELLOW}[!] OpenRouter key error. Blacklisted key. Selected next valid key ({next_or_key[:12]}...). Retrying turn...{RESET}"
+                        )
+                        continue
 
                 # 2. Check for Gemini key quota/rate-limit rotation if current agent uses Google/Gemini
-                if ("google" in turn_provider or "gemini" in turn_provider) and gemini_keys and (gemini_key_index + 1) < len(gemini_keys) and is_gemini_rotation_error(turn_error):
-                    gemini_key_index += 1
-                    api_keys["google"] = gemini_keys[gemini_key_index]
-                    turn_payload["apiKeys"] = api_keys
-                    print(
-                        f"{YELLOW}[!] Gemini key {gemini_key_index + 1}/{len(gemini_keys)} selected after quota/rate-limit error. Retrying turn...{RESET}"
-                    )
-                    continue
+                if ("google" in turn_provider or "gemini" in turn_provider) and is_gemini_rotation_error(turn_error):
+                    failing_gemini_key = api_keys.get("google")
+                    if failing_gemini_key:
+                        EXHAUSTED_GEMINI_KEYS.add(failing_gemini_key)
+                    valid_gemini_keys = get_gemini_keys(config, include_exhausted=False)
+                    if valid_gemini_keys:
+                        next_gemini_key = random.choice(valid_gemini_keys)
+                        api_keys["google"] = next_gemini_key
+                        turn_payload["apiKeys"] = api_keys
+                        print(
+                            f"{YELLOW}[!] Gemini key rate-limit/quota error. Blacklisted key. Selected next valid key ({next_gemini_key[:12]}...). Retrying turn...{RESET}"
+                        )
+                        continue
 
-                # 3. Check for Hugging Face token rate-limit rotation if current agent uses Hugging Face
-                if ("huggingface" in turn_provider or "hf" in turn_provider) and hf_tokens and (hf_token_index + 1) < len(hf_tokens) and is_huggingface_rotation_error(turn_error):
-                    hf_token_index += 1
-                    api_keys["huggingface"] = hf_tokens[hf_token_index]
-                    api_keys["hfToken"] = hf_tokens[hf_token_index]
-                    turn_payload["apiKeys"] = api_keys
-                    print(
-                        f"{YELLOW}[!] Hugging Face token {hf_token_index + 1}/{len(hf_tokens)} selected after rate-limit error. Retrying turn...{RESET}"
-                    )
-                    continue
+                # 3. Check for Hugging Face token rate-limit / depletion rotation if current agent uses Hugging Face
+                if ("huggingface" in turn_provider or "hf" in turn_provider) and is_huggingface_rotation_error(turn_error):
+                    failing_hf_key = api_keys.get("huggingface") or api_keys.get("hfToken")
+                    if failing_hf_key:
+                        EXHAUSTED_HF_TOKENS.add(failing_hf_key)
 
-                # 3. Check for Socket / Network Read Timeout
+                    valid_hf_tokens = get_huggingface_tokens(config, include_exhausted=False)
+                    if valid_hf_tokens:
+                        next_hf_token = random.choice(valid_hf_tokens)
+                        api_keys["huggingface"] = next_hf_token
+                        api_keys["hfToken"] = next_hf_token
+                        api_keys["huggingfaceKeys"] = valid_hf_tokens
+                        turn_payload["apiKeys"] = api_keys
+                        backoff_delay = random.uniform(2.5, 5.5)
+                        masked_old = f"...{failing_hf_key[-6:]}" if failing_hf_key and len(failing_hf_key) > 6 else "hf_***"
+                        masked_new = f"...{next_hf_token[-6:]}" if len(next_hf_token) > 6 else "hf_***"
+                        print(
+                            f"{YELLOW}[!] Hugging Face token ({masked_old}) error/depleted. Blacklisting key. Switching to valid random token ({masked_new}) after {backoff_delay:.1f}s delay...{RESET}"
+                        )
+                        time.sleep(backoff_delay)
+                        continue
+                    else:
+                        all_count = len(get_huggingface_tokens(config, include_exhausted=True))
+                        print(
+                            f"{RED}[!] All {all_count} Hugging Face tokens are depleted or rate-limited! Retrying turn with backoff...{RESET}"
+                        )
+
+                # 4. Check for Socket / Network Read Timeout
                 if is_timeout_error(turn_error):
                     turn_provider = current_agent.get("provider", "").lower()
-                    # If this agent was using OpenRouter and more keys exist, rotate to next key
-                    if "openrouter" in turn_provider and openrouter_keys and (openrouter_key_index + 1) < len(openrouter_keys):
-                        openrouter_key_index += 1
-                        api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
-                        turn_payload["apiKeys"] = api_keys
-                        print(
-                            f"{YELLOW}[!] Turn read timeout on OpenRouter. Rotating to key {openrouter_key_index + 1}/{len(openrouter_keys)} and retrying...{RESET}"
-                        )
-                        continue
-
-                    # If this agent was using Google/Gemini and more keys exist, rotate to next key
-                    if ("google" in turn_provider or "gemini" in turn_provider) and gemini_keys and (gemini_key_index + 1) < len(gemini_keys):
-                        gemini_key_index += 1
-                        api_keys["google"] = gemini_keys[gemini_key_index]
-                        turn_payload["apiKeys"] = api_keys
-                        print(
-                            f"{YELLOW}[!] Turn read timeout on Gemini. Rotating to key {gemini_key_index + 1}/{len(gemini_keys)} and retrying...{RESET}"
-                        )
-                        continue
-
-                    # If this agent was using Hugging Face and more tokens exist, rotate to next token
-                    if ("huggingface" in turn_provider or "hf" in turn_provider) and hf_tokens and (hf_token_index + 1) < len(hf_tokens):
-                        hf_token_index += 1
-                        api_keys["huggingface"] = hf_tokens[hf_token_index]
-                        api_keys["hfToken"] = hf_tokens[hf_token_index]
-                        turn_payload["apiKeys"] = api_keys
-                        print(
-                            f"{YELLOW}[!] Turn read timeout on Hugging Face. Rotating to token {hf_token_index + 1}/{len(hf_tokens)} and retrying...{RESET}"
-                        )
-                        continue
+                    if ("huggingface" in turn_provider or "hf" in turn_provider):
+                        valid_tokens = get_huggingface_tokens(config, include_exhausted=False)
+                        if valid_tokens:
+                            next_token = random.choice(valid_tokens)
+                            api_keys["huggingface"] = next_token
+                            api_keys["hfToken"] = next_token
+                            turn_payload["apiKeys"] = api_keys
+                            backoff_delay = random.uniform(2.0, 5.0)
+                            masked_token = f"...{next_token[-6:]}" if len(next_token) > 6 else "hf_***"
+                            print(
+                                f"{YELLOW}[!] Turn read timeout on Hugging Face. Rotating to random valid token ({masked_token}) and pausing {backoff_delay:.1f}s...{RESET}"
+                            )
+                            time.sleep(backoff_delay)
+                            continue
 
                     # Otherwise retry with backoff
                     if turn_retries_left > 0:
@@ -1344,6 +1410,8 @@ def main():
         default=None,
         help="Hugging Face User Access Token (or HF_TOKEN/HF_TOKENS from environment)",
     )
+    parser.add_argument("--hf-min-delay", type=float, default=1.0, help="Minimum random delay in seconds before Hugging Face requests (default: 1.0)")
+    parser.add_argument("--hf-max-delay", type=float, default=3.5, help="Maximum random delay in seconds before Hugging Face requests (default: 3.5)")
     parser.add_argument("--openai-key", default=None, help="OpenAI API Key (default: OPENAI_API_KEY from environment or .env)")
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")
     parser.add_argument("--deepseek-key", default=None, help="DeepSeek API Key (default: DEEPSEEK_API_KEY from environment or .env)")
