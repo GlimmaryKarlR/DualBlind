@@ -43,30 +43,50 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 STANDARD_MODELS = {
-    "smollm2:1.7b": {
-        "env_var": "OLLAMA_URL_SMOLLM2_1_7B",
-        "size": "1.8 GB",
-        "desc": "SmolLM2 1.7B Lightweight"
-    },
-    "gemma2:9b": {
-        "env_var": "OLLAMA_URL_GEMMA2_9B",
-        "size": "5.4 GB",
-        "desc": "Gemma 2 9B (Google)"
-    },
-    "qwen2.5-coder:7b": {
-        "env_var": "OLLAMA_URL_QWEN2_5_CODER_7B",
-        "size": "4.7 GB",
-        "desc": "Qwen 2.5 Coder 7B"
+    "deepseek-r1:14b": {
+        "env_var": "OLLAMA_URL_DEEPSEEK_R1_14B",
+        "size": "9.0 GB",
+        "desc": "DeepSeek R1 14B Distill (Math/Reasoning Champion)"
     },
     "deepseek-r1:8b": {
         "env_var": "OLLAMA_URL_DEEPSEEK_R1_8B",
         "size": "5.2 GB",
-        "desc": "DeepSeek R1 8B Distill"
+        "desc": "DeepSeek R1 8B Distill (Fast Reasoning)"
+    },
+    "qwen2.5-coder:14b": {
+        "env_var": "OLLAMA_URL_QWEN2_5_CODER_14B",
+        "size": "9.0 GB",
+        "desc": "Qwen 2.5 Coder 14B (SOTA Open Code Model)"
+    },
+    "qwen2.5-coder:7b": {
+        "env_var": "OLLAMA_URL_QWEN2_5_CODER_7B",
+        "size": "4.7 GB",
+        "desc": "Qwen 2.5 Coder 7B (Fast Coding)"
+    },
+    "phi4:14b": {
+        "env_var": "OLLAMA_URL_PHI4_14B",
+        "size": "9.1 GB",
+        "desc": "Microsoft Phi-4 14B (Complex Logic & Math)"
+    },
+    "mistral-nemo:12b": {
+        "env_var": "OLLAMA_URL_MISTRAL_NEMO_12B",
+        "size": "7.1 GB",
+        "desc": "Mistral NeMo 12B (128k Context)"
+    },
+    "gemma2:9b": {
+        "env_var": "OLLAMA_URL_GEMMA2_9B",
+        "size": "5.4 GB",
+        "desc": "Google Gemma 2 9B (High-Precision Generalist)"
     },
     "llama3.1:8b": {
         "env_var": "OLLAMA_URL_LLAMA3_1_8B",
         "size": "4.9 GB",
-        "desc": "Llama 3.1 8B (Meta)"
+        "desc": "Meta Llama 3.1 8B (Classic Standard)"
+    },
+    "smollm2:1.7b": {
+        "env_var": "OLLAMA_URL_SMOLLM2_1_7B",
+        "size": "1.8 GB",
+        "desc": "SmolLM2 1.7B Lightweight (Ultra Fast)"
     }
 }
 
@@ -131,6 +151,8 @@ def start_ollama_daemon():
     env = os.environ.copy()
     env["OLLAMA_HOST"] = "0.0.0.0:11434"
     env["OLLAMA_KEEP_ALIVE"] = "24h"
+    env["OLLAMA_MAX_LOADED_MODELS"] = "1"  # Dedicate 100% of 15GB VRAM to the currently inferring model
+    env["OLLAMA_NUM_PARALLEL"] = "1"
 
     ollama_bin = get_ollama_bin()
     subprocess.Popen(
@@ -261,8 +283,22 @@ def main():
     start_ollama_daemon()
 
     models_to_pull = []
-    if args.model.lower() == "all":
-        models_to_pull = list(STANDARD_MODELS.keys())
+    raw_selection = args.model.strip().lower()
+
+    PRESET_PACKS = {
+        "trio": ["llama3.1:8b", "deepseek-r1:8b", "qwen2.5-coder:7b"],
+        "quad": ["llama3.1:8b", "deepseek-r1:8b", "qwen2.5-coder:7b", "smollm2:1.7b"],
+        "reasoning": ["deepseek-r1:14b", "phi4:14b", "deepseek-r1:8b"],
+        "coding": ["qwen2.5-coder:14b", "qwen2.5-coder:7b"],
+        "heavy": ["deepseek-r1:14b", "qwen2.5-coder:14b", "phi4:14b"],
+        "compact": ["llama3.1:8b", "smollm2:1.7b"],
+        "all": list(STANDARD_MODELS.keys())
+    }
+
+    if raw_selection in PRESET_PACKS:
+        models_to_pull = PRESET_PACKS[raw_selection]
+    elif "," in args.model:
+        models_to_pull = [m.strip() for m in args.model.split(",") if m.strip()]
     elif args.model in STANDARD_MODELS:
         models_to_pull = [args.model]
     else:

@@ -575,8 +575,10 @@ async function callOpenAICompatible(
     headers['X-Title'] = 'DualBlind AI Arena';
   }
 
+  const isLocalOrColab = endpointUrl.includes('trycloudflare.com') || endpointUrl.includes('11434') || endpointUrl.includes('localhost');
+  const timeoutMs = isLocalOrColab ? 180000 : 90000;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(endpointUrl, {
