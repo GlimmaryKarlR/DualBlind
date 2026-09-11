@@ -1043,6 +1043,14 @@ def run_trial(
         api_keys["ollamaBaseUrl"] = ollama_base
         api_keys["ollamaUrl"] = ollama_base
 
+    # Multi-node Colab cluster endpoints for Agent Alpha and Agent Beta
+    url_a = getattr(config, "ollama_url_a", None) or os.environ.get("COLAB_URL_1") or os.environ.get("OLLAMA_BASE_URL_1")
+    url_b = getattr(config, "ollama_url_b", None) or os.environ.get("COLAB_URL_2") or os.environ.get("OLLAMA_BASE_URL_2")
+    if url_a:
+        api_keys["ollamaUrlA"] = url_a
+    if url_b:
+        api_keys["ollamaUrlB"] = url_b
+
     ollama_model_urls = {}
     for env_k, env_v in os.environ.items():
         if env_k.startswith("OLLAMA_URL_") and env_v.strip():
@@ -1541,6 +1549,8 @@ def main():
     parser.add_argument("--hf-min-delay", type=float, default=1.0, help="Minimum random delay in seconds before Hugging Face requests (default: 1.0)")
     parser.add_argument("--hf-max-delay", type=float, default=3.5, help="Maximum random delay in seconds before Hugging Face requests (default: 3.5)")
     parser.add_argument("--ollama-url", "--colab-url", dest="ollama_url", default=None, help="Base URL of Ollama or Google Colab Cloudflare tunnel (e.g. https://xxx.trycloudflare.com/v1)")
+    parser.add_argument("--ollama-url-a", "--colab-url-a", dest="ollama_url_a", default=None, help="Dedicated Colab tunnel URL for Agent Alpha (Colab GPU Node 1)")
+    parser.add_argument("--ollama-url-b", "--colab-url-b", dest="ollama_url_b", default=None, help="Dedicated Colab tunnel URL for Agent Beta (Colab GPU Node 2)")
     parser.add_argument("--ollama-model-url", dest="ollama_model_urls", action="append", default=None, help="Model-specific Colab endpoint mapping (e.g. --ollama-model-url llama3.1:8b=https://xxx.trycloudflare.com/v1)")
     parser.add_argument("--openai-key", default=None, help="OpenAI API Key (default: OPENAI_API_KEY from environment or .env)")
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")

@@ -1240,8 +1240,19 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         (cleanKey.includes('phi') ? (process.env.OLLAMA_URL_PHI4_14B || process.env.OLLAMA_URL_PHI) : undefined) ||
         (cleanKey.includes('smollm') ? (process.env.OLLAMA_URL_SMOLLM2_1_7B || process.env.OLLAMA_URL_SMOLLM) : undefined);
 
+      // 2. Check for multi-node agent-specific Colab endpoint (Colab 1 for Alpha, Colab 2 for Beta)
+      const isAgentB = agent.id === 'agent_b' || agent.id?.toLowerCase().includes('beta') || agent.id?.endsWith('_b');
+      const isAgentA = agent.id === 'agent_a' || agent.id?.toLowerCase().includes('alpha') || agent.id?.endsWith('_a');
+
+      const nodeUrl = isAgentB
+        ? (apiKeys?.ollamaUrlB || process.env.COLAB_URL_2 || process.env.OLLAMA_BASE_URL_2 || process.env.COLAB_OLLAMA_URL_2)
+        : isAgentA
+        ? (apiKeys?.ollamaUrlA || process.env.COLAB_URL_1 || process.env.OLLAMA_BASE_URL_1 || process.env.COLAB_OLLAMA_URL_1)
+        : undefined;
+
       const rawBaseUrl =
         perModelUrl ||
+        nodeUrl ||
         apiKeys?.ollamaBaseUrl ||
         apiKeys?.ollamaUrl ||
         process.env.OLLAMA_BASE_URL ||
