@@ -94,10 +94,27 @@ def install_ollama():
         log("Ollama", "Ollama is already installed.")
         return
 
-    log("Ollama", "Installing Ollama...", YELLOW)
-    cmd = "curl -fsSL https://ollama.com/install.sh | sh"
-    subprocess.run(cmd, shell=True, check=True)
-    log("Ollama", f"{GREEN}Ollama installed successfully!{RESET}")
+    log("Ollama", "Installing dependencies and Ollama binary...", YELLOW)
+    try:
+        # Install zstd and pciutils to extract the package and detect GPU hardware
+        subprocess.run("apt-get update -qq && apt-get install -y -qq zstd pciutils", shell=True, check=True)
+        # Download and extract the .tar.zst package into /usr
+        subprocess.run("curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst -o /tmp/ollama.tar.zst", shell=True, check=True)
+        subprocess.run("tar --zstd -xf /tmp/ollama.tar.zst -C /usr", shell=True, check=True)
+        subprocess.run("rm -f /tmp/ollama.tar.zst", shell=True, check=True)
+        log("Ollama", f"{GREEN}Ollama installed successfully!{RESET}")
+    except Exception as e:
+        log("Ollama", f"Extraction error: {e}. Trying fallback binary archive...", YELLOW)
+        subprocess.run("curl -fsSL https://ollama.com/download/ollama-linux-amd64.tgz -o /tmp/ollama.tgz && tar -xzf /tmp/ollama.tgz -C /usr && rm -f /tmp/ollama.tgz", shell=True, check=False)
+
+
+def get_ollama_bin() -> str:
+    """Find ollama executable path."""
+    for cand in ["ollama", "/usr/bin/ollama", "/usr/local/bin/ollama", "/bin/ollama"]:
+        p = shutil.which(cand) or (cand if os.path.isfile(cand) and os.access(cand, os.X_OK) else None)
+        if p:
+            return p
+    return "ollama"
 
 
 def start_ollama_daemon():
@@ -115,8 +132,9 @@ def start_ollama_daemon():
     env["OLLAMA_HOST"] = "0.0.0.0:11434"
     env["OLLAMA_KEEP_ALIVE"] = "24h"
 
+    ollama_bin = get_ollama_bin()
     subprocess.Popen(
-        ["ollama", "serve"],
+        [ollama_bin, "serve"],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
@@ -136,7 +154,8 @@ def start_ollama_daemon():
 def pull_model(model_name: str):
     """Pull specified model using ollama pull."""
     log("Pull", f"Downloading model: {BOLD}{model_name}{RESET}...", CYAN)
-    res = subprocess.run(["ollama", "pull", model_name], check=True)
+    ollama_bin = get_ollama_bin()
+    res = subprocess.run([ollama_bin, "pull", model_name], check=True)
     log("Pull", f"{GREEN}Model '{model_name}' ready!{RESET}")
 
 
@@ -209,13 +228,18 @@ def test_endpoint(tunnel_url: str, test_model: str):
         headers={"Content-Type": "application/json"}
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            log("Test", f"{GREEN}Endpoint verified! Model response: {content}{RESET}")
-    except Exception as e:
-        log("Test", f"Ping note: {e} (Model is still loading or ready)", YELLOW)
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                log("Test", f"{GREEN}Endpoint verified! Model response: {content}{RESET}")
+                return
+        except Exception as e:
+            if attempt < 3:
+                time.sleep(2.5)
+            else:
+                log("Test", f"Ping note: {e} (Cloudflare DNS propagating)", YELLOW)
 
 
 def main():

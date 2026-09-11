@@ -779,6 +779,8 @@ def is_model_free(model_name: str, provider: str = "") -> bool:
         return True
     if provider.lower() in ("huggingface", "hf") or m.startswith("hf:") or m.startswith("huggingface/"):
         return True
+    if provider.lower() == "ollama" or m.startswith("ollama/"):
+        return True
     if provider.lower() == "google" or m.startswith("gemini-") or m.startswith("google/"):
         if any(f in m for f in ["flash", "gemma", "exp"]):
             return True
@@ -810,8 +812,20 @@ def select_trial_agents(config: argparse.Namespace, trial_num: int) -> tuple[dic
     use_random = getattr(config, "random_models", True)
 
     if has_custom and not use_random:
-        prov_a = config.provider_a or ("openrouter" if ":free" in config.model_a or "/" in config.model_a else "google")
-        prov_b = config.provider_b or ("openrouter" if ":free" in config.model_b or "/" in config.model_b else "google")
+        def infer_prov(m_str: str) -> str:
+            if not m_str:
+                return "google"
+            ms = m_str.lower()
+            if ms.startswith("ollama/") or ms.startswith("ollama:"):
+                return "ollama"
+            if ms.startswith("hf:") or ms.startswith("huggingface/") or ms.startswith("hf/"):
+                return "huggingface"
+            if ":free" in ms or "/" in ms:
+                return "openrouter"
+            return "google"
+
+        prov_a = config.provider_a or infer_prov(config.model_a)
+        prov_b = config.provider_b or infer_prov(config.model_b)
 
         # Enforce free models if forced
         if getattr(config, "force_free", True):
