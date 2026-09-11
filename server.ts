@@ -1222,10 +1222,37 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         modelUsed = hfRes.modelUsed;
       }
     } else if (provider === 'ollama' || (agent.model && agent.model.startsWith('ollama/'))) {
-      const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1';
-      const endpoint = `${ollamaBaseUrl.replace(/\/$/, '')}/chat/completions`;
       const targetModel = agent.model.replace(/^ollama\//i, '');
-      console.log(`[Ollama] Executing local model '${targetModel}' via ${endpoint}`);
+      const cleanKey = targetModel.toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+      // 1. Check for dedicated per-model Colab instance / space URL
+      const perModelUrl =
+        apiKeys?.ollamaUrls?.[targetModel] ||
+        apiKeys?.ollamaUrls?.[`ollama/${targetModel}`] ||
+        apiKeys?.ollamaUrls?.[cleanKey] ||
+        process.env[`OLLAMA_URL_${cleanKey.toUpperCase()}`] ||
+        (cleanKey.includes('llama') ? (process.env.OLLAMA_URL_LLAMA3_1_8B || process.env.OLLAMA_URL_LLAMA) : undefined) ||
+        (cleanKey.includes('deepseek') ? (process.env.OLLAMA_URL_DEEPSEEK_R1_8B || process.env.OLLAMA_URL_DEEPSEEK) : undefined) ||
+        (cleanKey.includes('qwen') ? (process.env.OLLAMA_URL_QWEN2_5_CODER_7B || process.env.OLLAMA_URL_QWEN) : undefined) ||
+        (cleanKey.includes('gemma') ? (process.env.OLLAMA_URL_GEMMA2_9B || process.env.OLLAMA_URL_GEMMA) : undefined) ||
+        (cleanKey.includes('smollm') ? (process.env.OLLAMA_URL_SMOLLM2_1_7B || process.env.OLLAMA_URL_SMOLLM) : undefined);
+
+      const rawBaseUrl =
+        perModelUrl ||
+        apiKeys?.ollamaBaseUrl ||
+        apiKeys?.ollamaUrl ||
+        process.env.OLLAMA_BASE_URL ||
+        process.env.COLAB_OLLAMA_URL ||
+        'http://localhost:11434/v1';
+
+      const cleanBase = rawBaseUrl.trim().replace(/\/$/, '');
+      const endpoint = cleanBase.endsWith('/chat/completions')
+        ? cleanBase
+        : cleanBase.endsWith('/v1')
+        ? `${cleanBase}/chat/completions`
+        : `${cleanBase}/v1/chat/completions`;
+
+      console.log(`[Ollama/Colab] Executing '${targetModel}' via endpoint: ${endpoint}`);
       const ollamaRes = await callOpenAICompatible(
         endpoint,
         'ollama',

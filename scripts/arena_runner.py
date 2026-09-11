@@ -963,6 +963,27 @@ def run_trial(
     if config.deepseek_key or os.environ.get("DEEPSEEK_API_KEY"):
         api_keys["deepseek"] = config.deepseek_key or os.environ.get("DEEPSEEK_API_KEY")
 
+    # Ollama / Google Colab Cloudflare Tunnel routing
+    ollama_base = getattr(config, "ollama_url", None) or os.environ.get("OLLAMA_BASE_URL") or os.environ.get("COLAB_OLLAMA_URL")
+    if ollama_base:
+        api_keys["ollamaBaseUrl"] = ollama_base
+        api_keys["ollamaUrl"] = ollama_base
+
+    ollama_model_urls = {}
+    for env_k, env_v in os.environ.items():
+        if env_k.startswith("OLLAMA_URL_") and env_v.strip():
+            ollama_model_urls[env_k] = env_v.strip()
+            # Also register without prefix for direct model matching
+            clean_m = env_k.replace("OLLAMA_URL_", "").lower()
+            ollama_model_urls[clean_m] = env_v.strip()
+    cli_model_urls = getattr(config, "ollama_model_urls", None) or []
+    for item in cli_model_urls:
+        if "=" in item:
+            m_name, m_url = item.split("=", 1)
+            ollama_model_urls[m_name.strip()] = m_url.strip()
+    if ollama_model_urls:
+        api_keys["ollamaUrls"] = ollama_model_urls
+
     turns_data = []
     total_tokens = 0
     total_input_tokens = 0
@@ -1445,6 +1466,8 @@ def main():
     )
     parser.add_argument("--hf-min-delay", type=float, default=1.0, help="Minimum random delay in seconds before Hugging Face requests (default: 1.0)")
     parser.add_argument("--hf-max-delay", type=float, default=3.5, help="Maximum random delay in seconds before Hugging Face requests (default: 3.5)")
+    parser.add_argument("--ollama-url", "--colab-url", dest="ollama_url", default=None, help="Base URL of Ollama or Google Colab Cloudflare tunnel (e.g. https://xxx.trycloudflare.com/v1)")
+    parser.add_argument("--ollama-model-url", dest="ollama_model_urls", action="append", default=None, help="Model-specific Colab endpoint mapping (e.g. --ollama-model-url llama3.1:8b=https://xxx.trycloudflare.com/v1)")
     parser.add_argument("--openai-key", default=None, help="OpenAI API Key (default: OPENAI_API_KEY from environment or .env)")
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")
     parser.add_argument("--deepseek-key", default=None, help="DeepSeek API Key (default: DEEPSEEK_API_KEY from environment or .env)")
