@@ -1237,6 +1237,7 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         (cleanKey.includes('deepseek') ? (process.env.OLLAMA_URL_DEEPSEEK_R1_8B || process.env.OLLAMA_URL_DEEPSEEK) : undefined) ||
         (cleanKey.includes('qwen') ? (process.env.OLLAMA_URL_QWEN2_5_CODER_7B || process.env.OLLAMA_URL_QWEN) : undefined) ||
         (cleanKey.includes('gemma') ? (process.env.OLLAMA_URL_GEMMA2_9B || process.env.OLLAMA_URL_GEMMA) : undefined) ||
+        (cleanKey.includes('phi') ? (process.env.OLLAMA_URL_PHI4_14B || process.env.OLLAMA_URL_PHI) : undefined) ||
         (cleanKey.includes('smollm') ? (process.env.OLLAMA_URL_SMOLLM2_1_7B || process.env.OLLAMA_URL_SMOLLM) : undefined);
 
       const rawBaseUrl =

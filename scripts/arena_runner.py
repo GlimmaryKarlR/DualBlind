@@ -674,6 +674,48 @@ VERIFIED_FREE_MODELS = [
         "name": "OpenRouter Free Auto-Router",
         "family": "Auto",
     },
+    {
+        "model": "liquid/lfm-2.5-2.6b:free",
+        "provider": "openrouter",
+        "name": "Liquid LFM 2.5 2.6B Free",
+        "family": "Liquid",
+    },
+    {
+        "model": "google/gemma-4-31b-it:free",
+        "provider": "openrouter",
+        "name": "Gemma 4 31B Free",
+        "family": "Google",
+    },
+    {
+        "model": "google/gemma-4-26b-a4b-it:free",
+        "provider": "openrouter",
+        "name": "Gemma 4 26B A4B Free",
+        "family": "Google",
+    },
+    {
+        "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+        "provider": "openrouter",
+        "name": "Nemotron 3 Nano Omni 30B Free",
+        "family": "Nvidia",
+    },
+    {
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "provider": "openrouter",
+        "name": "Nemotron 3 Super 120B Free",
+        "family": "Nvidia",
+    },
+    {
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "provider": "openrouter",
+        "name": "Nemotron 3 Ultra 550B Free",
+        "family": "Nvidia",
+    },
+    {
+        "model": "nvidia/nemotron-3.5-lightning:free",
+        "provider": "openrouter",
+        "name": "Nemotron 3.5 Lightning Free",
+        "family": "Nvidia",
+    },
     # Google AI Studio Free Tier Models
     {
         "model": "gemini-2.5-flash",
@@ -766,6 +808,24 @@ VERIFIED_FREE_MODELS = [
         "provider": "ollama",
         "name": "SmolLM2 1.7B (Ollama Local)",
         "family": "HuggingFaceTB",
+    },
+    {
+        "model": "ollama/phi4:14b",
+        "provider": "ollama",
+        "name": "Phi-4 14B (Ollama Local)",
+        "family": "Microsoft",
+    },
+    {
+        "model": "ollama/deepseek-r1:14b",
+        "provider": "ollama",
+        "name": "DeepSeek R1 14B (Ollama Local)",
+        "family": "DeepSeek",
+    },
+    {
+        "model": "ollama/qwen2.5-coder:14b",
+        "provider": "ollama",
+        "name": "Qwen 2.5 Coder 14B (Ollama Local)",
+        "family": "Qwen",
     },
 ]
 
