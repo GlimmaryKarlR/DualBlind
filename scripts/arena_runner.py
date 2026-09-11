@@ -1585,8 +1585,8 @@ def main():
     parser.add_argument(
         "--batch-pause",
         type=int,
-        default=120,
-        help="Cooldown pause duration in seconds after every batch of runs (default: 120s / 2 minutes)",
+        default=5,
+        help="Cooldown pause duration in seconds after every batch of runs (default: Ns / 2 minutes)",
     )
     parser.add_argument(
         "--pause-minutes",
