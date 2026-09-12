@@ -35,6 +35,18 @@ import traceback
 import urllib.request
 import urllib.error
 from datetime import datetime
+import requests
+import itertools
+
+
+from dotenv import load_dotenv
+
+load_dotenv(".env.local")
+
+# Load OpenRouter keys (supports fallback if OPENROUTER_API_KEY is requested)
+OPENROUTER_API_KEYS = os.getenv("OPENROUTER_API_KEYS", "").split(",")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or (OPENROUTER_API_KEYS[0] if OPENROUTER_API_KEYS else None)
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 # Enable unbuffered / line-buffered streaming in all terminal and subprocess environments
 if hasattr(sys.stdout, "reconfigure"):
@@ -52,6 +64,14 @@ BLUE = "\033[94m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
 RESET = "\033[0m"
+
+headers = {
+    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    "HTTP-Referer": "https://dual-blind.vercel.app",  # Prevents OpenRouter 403/401 drops
+    "X-Title": "DualBlind Arena",
+    "Content-Type": "application/json",
+}
+
 
 # Graceful termination handler
 RUNNING = True
@@ -440,7 +460,7 @@ def is_timeout_error(error: Exception) -> bool:
     )
 
 
-def post_json(url: str, payload: dict, timeout: int = 120) -> dict:
+def post_json(url: str, payload: dict, timeout: int = 240) -> dict:
     """Send a POST request with JSON body, extracting clear error bodies if HTTPError occurs."""
     data_bytes = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
@@ -1572,7 +1592,7 @@ def main():
     parser.add_argument("--list-free-models", action="store_true", help="List all verified 100%% free models across OpenRouter & Google and exit")
     parser.add_argument("--suite", default="all", help="Benchmark suite filter (e.g. gpqa_diamond, swe_bench, math_aime, hle, all)")
     parser.add_argument("--max-turns", type=int, default=5, help="Maximum turns per agent (default: 5)")
-    parser.add_argument("--turn-timeout", type=int, default=120, help="Per-turn inference timeout in seconds (default: 120)")
+    parser.add_argument("--turn-timeout", type=int, default=240, help="Per-turn inference timeout in seconds (default: 120)")
     parser.add_argument("--uncapped", action="store_true", help="Run in uncapped mode until natural consensus or loop cap")
     parser.add_argument("--count", type=int, default=0, help="Number of benchmark trials to run (0 for infinite loop)")
     parser.add_argument("--delay", type=float, default=2.0, help="Cooling delay in seconds between trials (default: 2.0)")
