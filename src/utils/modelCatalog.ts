@@ -22,6 +22,7 @@ export interface CatalogModel {
     | 'openrouter'
     | 'orcarouter'
     | 'huggingface'
+    | 'ollama'
     | 'custom';
   isExternal: boolean;
   inputPricePerMillion: number;
@@ -40,6 +41,18 @@ export interface BrandGroup {
 
 // Raw list supplied by user
 const RAW_MODELS: string[] = [
+  // Google Colab GPU Cluster Nodes (untitled1.ipynb, untitled2.ipynb, untitled3.ipynb)
+  'Ollama: DeepSeek R1 14B (Colab Node 2) (free)',
+  'Ollama: Mistral NeMo 12B (Colab Node 3) (free)',
+  'Ollama: Qwen 2.5 14B (Colab Node 3) (free)',
+  'Ollama: CodeLlama 7B (Colab Node 3) (free)',
+  'Ollama: Llama 3.2 3B (Colab Node 3) (free)',
+  'Ollama: Llama 3.1 8B (Colab Node 1) (free)',
+  'Ollama: DeepSeek R1 8B (Colab Node 1) (free)',
+  'Ollama: Qwen 2.5 Coder 7B (Colab Node 1) (free)',
+  'Ollama: Gemma 2 9B (Colab Node 1) (free)',
+  'Ollama: SmolLM2 1.7B (Colab Node 1) (free)',
+  'Ollama: Phi-4 14B (Colab Node 1) (free)',
   'Hugging Face: Llama 3.3 70B Instruct',
   'Hugging Face: DeepSeek R1 Distill Qwen 32B',
   'Hugging Face: Qwen 2.5 72B Instruct',
@@ -528,6 +541,9 @@ function extractBrandAndName(raw: string): { brand: string; name: string } {
   if (trimmed.toLowerCase().startsWith('orcarouter') || trimmed.toLowerCase().startsWith('orca router')) {
     return { brand: 'OrcaRouter', name: trimmed.replace(/^OrcaRouter:?\s*/i, '') };
   }
+  if (trimmed.toLowerCase().startsWith('ollama:') || trimmed.toLowerCase().startsWith('ollama/')) {
+    return { brand: 'Ollama (Colab)', name: trimmed.replace(/^ollama[:\/]\s*/i, '') };
+  }
   if (trimmed.toLowerCase().startsWith('hugging face:') || trimmed.toLowerCase().startsWith('huggingface:')) {
     return { brand: 'Hugging Face', name: trimmed.replace(/^hugging\s*face:\s*/i, '') };
   }
@@ -546,6 +562,7 @@ function extractBrandAndName(raw: string): { brand: string; name: string } {
 function resolveProvider(brand: string, modelName: string): CatalogModel['provider'] {
   const b = brand.toLowerCase();
   const m = modelName.toLowerCase();
+  if (b.includes('ollama') || m.startsWith('ollama/')) return 'ollama';
   if (b.includes('orcarouter') || b.includes('orca router') || m.includes('orcarouter')) return 'orcarouter';
   if (b.includes('hugging face') || b.includes('huggingface') || m.includes('huggingface') || m.startsWith('hf/')) return 'huggingface';
   if (b.includes('google')) return 'google';
@@ -617,7 +634,22 @@ function parseModelEntry(raw: string, index: number): CatalogModel {
   let modelCode = resolveOpenRouterModel(raw);
   let effectiveProvider = provider;
 
-  if (isFree) {
+  if (provider === 'ollama' || brand.toLowerCase().includes('ollama')) {
+    effectiveProvider = 'ollama';
+    const lower = name.toLowerCase();
+    if (lower.includes('deepseek r1 14b') || lower.includes('deepseek-r1:14b')) modelCode = 'ollama/deepseek-r1:14b';
+    else if (lower.includes('mistral nemo') || lower.includes('mistral-nemo')) modelCode = 'ollama/mistral-nemo:12b';
+    else if (lower.includes('qwen 2.5 14b') || lower.includes('qwen2.5 14b') || lower.includes('qwen2.5:14b')) modelCode = 'ollama/qwen2.5:14b';
+    else if (lower.includes('codellama 7b') || lower.includes('codellama:7b')) modelCode = 'ollama/codellama:7b';
+    else if (lower.includes('llama 3.2 3b') || lower.includes('llama3.2:3b')) modelCode = 'ollama/llama3.2:3b';
+    else if (lower.includes('llama 3.1 8b') || lower.includes('llama3.1:8b')) modelCode = 'ollama/llama3.1:8b';
+    else if (lower.includes('deepseek r1 8b') || lower.includes('deepseek-r1:8b')) modelCode = 'ollama/deepseek-r1:8b';
+    else if (lower.includes('qwen 2.5 coder 7b') || lower.includes('qwen2.5 coder 7b') || lower.includes('qwen2.5-coder:7b')) modelCode = 'ollama/qwen2.5-coder:7b';
+    else if (lower.includes('gemma 2 9b') || lower.includes('gemma2:9b')) modelCode = 'ollama/gemma2:9b';
+    else if (lower.includes('smollm2')) modelCode = 'ollama/smollm2:1.7b';
+    else if (lower.includes('phi-4') || lower.includes('phi 4') || lower.includes('phi4:14b')) modelCode = 'ollama/phi4:14b';
+    else modelCode = `ollama/${name.toLowerCase().split(' ')[0]}`;
+  } else if (isFree) {
     effectiveProvider = 'openrouter';
   } else if (provider === 'huggingface' || brand === 'Hugging Face') {
     effectiveProvider = 'huggingface';
@@ -663,6 +695,8 @@ export const ALL_CATALOG_MODELS: CatalogModel[] = RAW_MODELS.map((raw, idx) =>
 
 // Map of brand styling accents
 export const BRAND_COLORS: Record<string, string> = {
+  'Ollama (Colab)': 'teal',
+  Ollama: 'teal',
   Google: 'indigo',
   OpenAI: 'emerald',
   Anthropic: 'amber',

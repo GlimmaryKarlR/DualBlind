@@ -1228,17 +1228,54 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
       const cleanKey = targetModel.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
       // 1. Check for dedicated per-model Colab instance / space URL
-      const perModelUrl =
+      let perModelUrl =
         apiKeys?.ollamaUrls?.[targetModel] ||
         apiKeys?.ollamaUrls?.[`ollama/${targetModel}`] ||
         apiKeys?.ollamaUrls?.[cleanKey] ||
-        process.env[`OLLAMA_URL_${cleanKey.toUpperCase()}`] ||
-        (cleanKey.includes('llama') ? (process.env.OLLAMA_URL_LLAMA3_1_8B || process.env.OLLAMA_URL_LLAMA) : undefined) ||
-        (cleanKey.includes('deepseek') ? (process.env.OLLAMA_URL_DEEPSEEK_R1_8B || process.env.OLLAMA_URL_DEEPSEEK) : undefined) ||
-        (cleanKey.includes('qwen') ? (process.env.OLLAMA_URL_QWEN2_5_CODER_7B || process.env.OLLAMA_URL_QWEN) : undefined) ||
-        (cleanKey.includes('gemma') ? (process.env.OLLAMA_URL_GEMMA2_9B || process.env.OLLAMA_URL_GEMMA) : undefined) ||
-        (cleanKey.includes('phi') ? (process.env.OLLAMA_URL_PHI4_14B || process.env.OLLAMA_URL_PHI) : undefined) ||
-        (cleanKey.includes('smollm') ? (process.env.OLLAMA_URL_SMOLLM2_1_7B || process.env.OLLAMA_URL_SMOLLM) : undefined);
+        process.env[`OLLAMA_URL_${cleanKey.toUpperCase()}`];
+
+      // Notebook 2: DeepSeek R1 14B Dedicated Node
+      if (!perModelUrl && cleanKey.includes('deepseek') && cleanKey.includes('14b')) {
+        perModelUrl =
+          process.env.OLLAMA_URL_DEEPSEEK_R1_14B ||
+          process.env.COLAB_URL_2 ||
+          process.env.OLLAMA_BASE_URL_2 ||
+          process.env.COLAB_OLLAMA_URL_2;
+      }
+
+      // Notebook 3: Multi-Model Suite (Mistral NeMo 12B, Qwen 2.5 14B, CodeLlama 7B, Llama 3.2 3B, Qwen 2.5 Coder 14B)
+      if (!perModelUrl && (
+        cleanKey.includes('mistral') ||
+        (cleanKey.includes('qwen') && cleanKey.includes('14b')) ||
+        cleanKey.includes('codellama') ||
+        (cleanKey.includes('llama') && cleanKey.includes('3_2'))
+      )) {
+        perModelUrl =
+          process.env[`OLLAMA_URL_${cleanKey.toUpperCase()}`] ||
+          (cleanKey.includes('mistral') ? process.env.OLLAMA_URL_MISTRAL_NEMO_12B : undefined) ||
+          (cleanKey.includes('codellama') ? process.env.OLLAMA_URL_CODELLAMA_7B : undefined) ||
+          (cleanKey.includes('llama') ? process.env.OLLAMA_URL_LLAMA3_2_3B : undefined) ||
+          process.env.COLAB_URL_3 ||
+          process.env.OLLAMA_BASE_URL_3 ||
+          process.env.COLAB_OLLAMA_URL_3;
+      }
+
+      // Notebook 1: Standard Suite (Llama 3.1 8B, DeepSeek R1 8B, Qwen 2.5 Coder 7B, Gemma 2 9B, SmolLM2 1.7B, Phi-4 14B)
+      if (!perModelUrl) {
+        if (cleanKey.includes('llama') && cleanKey.includes('3_1')) {
+          perModelUrl = process.env.OLLAMA_URL_LLAMA3_1_8B || process.env.OLLAMA_URL_LLAMA;
+        } else if (cleanKey.includes('deepseek') && (cleanKey.includes('8b') || !cleanKey.includes('14b'))) {
+          perModelUrl = process.env.OLLAMA_URL_DEEPSEEK_R1_8B || process.env.OLLAMA_URL_DEEPSEEK;
+        } else if (cleanKey.includes('qwen') && (cleanKey.includes('7b') || cleanKey.includes('coder_7b'))) {
+          perModelUrl = process.env.OLLAMA_URL_QWEN2_5_CODER_7B || process.env.OLLAMA_URL_QWEN;
+        } else if (cleanKey.includes('gemma')) {
+          perModelUrl = process.env.OLLAMA_URL_GEMMA2_9B || process.env.OLLAMA_URL_GEMMA;
+        } else if (cleanKey.includes('phi')) {
+          perModelUrl = process.env.OLLAMA_URL_PHI4_14B || process.env.OLLAMA_URL_PHI;
+        } else if (cleanKey.includes('smollm')) {
+          perModelUrl = process.env.OLLAMA_URL_SMOLLM2_1_7B || process.env.OLLAMA_URL_SMOLLM;
+        }
+      }
 
       // 2. Check for multi-node agent-specific Colab endpoint (Colab 1 for Alpha, Colab 2 for Beta)
       const isAgentB = agent.id === 'agent_b' || agent.id?.toLowerCase().includes('beta') || agent.id?.endsWith('_b');
@@ -1255,6 +1292,9 @@ ${agent.systemPromptModifier ? `\nAgent Specialty: ${agent.systemPromptModifier}
         nodeUrl ||
         apiKeys?.ollamaBaseUrl ||
         apiKeys?.ollamaUrl ||
+        apiKeys?.ollamaUrl3 ||
+        process.env.COLAB_URL_3 ||
+        process.env.OLLAMA_BASE_URL_3 ||
         process.env.OLLAMA_BASE_URL ||
         process.env.COLAB_OLLAMA_URL ||
         'http://localhost:11434/v1';

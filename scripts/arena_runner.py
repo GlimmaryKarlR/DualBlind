@@ -35,18 +35,19 @@ import traceback
 import urllib.request
 import urllib.error
 from datetime import datetime
-import requests
 import itertools
 
+# Safe optional imports for environments without external packages
+try:
+    from dotenv import load_dotenv
+    load_dotenv(".env.local")
+except Exception:
+    load_dotenv = None
 
-from dotenv import load_dotenv
-
-load_dotenv(".env.local")
-
-# Load OpenRouter keys (supports fallback if OPENROUTER_API_KEY is requested)
-OPENROUTER_API_KEYS = os.getenv("OPENROUTER_API_KEYS", "").split(",")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or (OPENROUTER_API_KEYS[0] if OPENROUTER_API_KEYS else None)
-HF_TOKEN = os.getenv("HF_TOKEN")
+try:
+    import requests
+except Exception:
+    requests = None
 
 # Enable unbuffered / line-buffered streaming in all terminal and subprocess environments
 if hasattr(sys.stdout, "reconfigure"):
@@ -65,11 +66,12 @@ BOLD = "\033[1m"
 DIM = "\033[2m"
 RESET = "\033[0m"
 
+# Dynamic runtime headers placeholder; dynamically refreshed per request & rotation
 headers = {
-    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
     "HTTP-Referer": "https://dual-blind.vercel.app",  # Prevents OpenRouter 403/401 drops
     "X-Title": "DualBlind Arena",
     "Content-Type": "application/json",
+    "User-Agent": "DualBlind-Headless-Runner/1.0",
 }
 
 
@@ -84,7 +86,7 @@ signal.signal(signal.SIGINT, handle_sigint)
 signal.signal(signal.SIGTERM, handle_sigint)
 
 
-def load_env_candidates():
+def load_env_candidates(force_reload: bool = False):
     """Look for and parse .env or .env.local in current, parent, and script dirs without external dependencies."""
     search_dirs = [
         os.getcwd(),
@@ -111,7 +113,7 @@ def load_env_candidates():
     for d in search_dirs:
         for name in candidate_names:
             p = os.path.normpath(os.path.join(d, name))
-            if os.path.isfile(p) and p not in loaded:
+            if os.path.isfile(p) and (p not in loaded or force_reload):
                 loaded.append(p)
                 try:
                     with open(p, "r", encoding="utf-8") as f:
@@ -124,7 +126,7 @@ def load_env_candidates():
                             v = v.strip().strip("'\"")
                             if not k or not v:
                                 continue
-                            if k not in os.environ or not os.environ[k].strip():
+                            if force_reload or k not in os.environ or not os.environ[k].strip():
                                 os.environ[k] = v
                             elif k in mergeable_keys:
                                 existing_items = [x.strip() for x in os.environ[k].split(",") if x.strip()]
@@ -149,6 +151,10 @@ DEFAULT_GEMINI_KEYS: list[str] = []
 EXHAUSTED_HF_TOKENS: set[str] = set()
 EXHAUSTED_OPENROUTER_KEYS: set[str] = set()
 EXHAUSTED_GEMINI_KEYS: set[str] = set()
+
+# OpenRouter Key Pool & Itertools Cycle Manager
+_OPENROUTER_CYCLE = None
+_CURRENT_OPENROUTER_KEY = None
 
 
 def get_openrouter_keys(config: argparse.Namespace | None = None, include_exhausted: bool = False) -> list[str]:
@@ -189,6 +195,51 @@ def get_openrouter_keys(config: argparse.Namespace | None = None, include_exhaus
         keys = [k for k in keys if k not in EXHAUSTED_OPENROUTER_KEYS]
 
     return keys
+
+
+def get_next_openrouter_key(config: argparse.Namespace | None = None) -> str | None:
+    """Cycle to the next non-exhausted OpenRouter key using itertools.cycle."""
+    global _OPENROUTER_CYCLE, _CURRENT_OPENROUTER_KEY
+    keys = get_openrouter_keys(config, include_exhausted=False)
+    if not keys:
+        keys = get_openrouter_keys(config, include_exhausted=True)
+    if not keys:
+        _CURRENT_OPENROUTER_KEY = None
+        return None
+
+    if _OPENROUTER_CYCLE is None:
+        _OPENROUTER_CYCLE = itertools.cycle(keys)
+
+    for _ in range(len(keys) + 1):
+        k = next(_OPENROUTER_CYCLE)
+        if k not in EXHAUSTED_OPENROUTER_KEYS or len(EXHAUSTED_OPENROUTER_KEYS) >= len(keys):
+            _CURRENT_OPENROUTER_KEY = k
+            update_runtime_headers(k)
+            return k
+
+    _CURRENT_OPENROUTER_KEY = keys[0]
+    update_runtime_headers(_CURRENT_OPENROUTER_KEY)
+    return _CURRENT_OPENROUTER_KEY
+
+
+def update_runtime_headers(api_key: str | None = None, target_url: str = "https://dual-blind.vercel.app") -> dict:
+    """Dynamically update global headers dict to ensure HTTP-Referer, X-Title, and active Authorization headers."""
+    global headers
+    key = api_key or _CURRENT_OPENROUTER_KEY or os.environ.get("OPENROUTER_API_KEY")
+    headers["Content-Type"] = "application/json"
+    headers["User-Agent"] = "DualBlind-Headless-Runner/1.0"
+    headers["HTTP-Referer"] = target_url or "https://dual-blind.vercel.app"
+    headers["X-Title"] = "DualBlind Arena"
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+        headers["X-OpenRouter-Key"] = key
+    elif "Authorization" in headers:
+        del headers["Authorization"]
+    return headers
+
+
+# Initialize active runtime headers on load
+update_runtime_headers()
 
 
 def get_gemini_keys(config: argparse.Namespace | None = None, include_exhausted: bool = False) -> list[str]:
@@ -460,16 +511,22 @@ def is_timeout_error(error: Exception) -> bool:
     )
 
 
-def post_json(url: str, payload: dict, timeout: int = 240) -> dict:
-    """Send a POST request with JSON body, extracting clear error bodies if HTTPError occurs."""
+def post_json(url: str, payload: dict, timeout: int = 240, extra_headers: dict | None = None) -> dict:
+    """Send a POST request with JSON body and runtime headers, extracting clear error bodies if HTTPError occurs."""
+    global headers
     data_bytes = json.dumps(payload).encode("utf-8")
+    req_headers = dict(headers)
+    req_headers["Content-Type"] = "application/json"
+    req_headers.setdefault("User-Agent", "DualBlind-Headless-Runner/1.0")
+    req_headers.setdefault("HTTP-Referer", "https://dual-blind.vercel.app")
+    req_headers.setdefault("X-Title", "DualBlind Arena")
+    if extra_headers:
+        req_headers.update(extra_headers)
+
     req = urllib.request.Request(
         url,
         data=data_bytes,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "DualBlind-Headless-Runner/1.0",
-        },
+        headers=req_headers,
         method="POST",
     )
     try:
@@ -487,11 +544,19 @@ def post_json(url: str, payload: dict, timeout: int = 240) -> dict:
         raise RuntimeError(f"HTTP {e.code}: {err_msg}") from None
 
 
-def get_json(url: str, timeout: int = 30) -> dict:
-    """Send a GET request and parse JSON response, extracting clear error bodies if HTTPError occurs."""
+def get_json(url: str, timeout: int = 30, extra_headers: dict | None = None) -> dict:
+    """Send a GET request and parse JSON response with runtime headers, extracting clear error bodies if HTTPError occurs."""
+    global headers
+    req_headers = dict(headers)
+    req_headers.setdefault("User-Agent", "DualBlind-Headless-Runner/1.0")
+    req_headers.setdefault("HTTP-Referer", "https://dual-blind.vercel.app")
+    req_headers.setdefault("X-Title", "DualBlind Arena")
+    if extra_headers:
+        req_headers.update(extra_headers)
+
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": "DualBlind-Headless-Runner/1.0"},
+        headers=req_headers,
         method="GET",
     )
     try:
@@ -847,6 +912,30 @@ VERIFIED_FREE_MODELS = [
         "name": "Qwen 2.5 Coder 14B (Ollama Local)",
         "family": "Qwen",
     },
+    {
+        "model": "ollama/mistral-nemo:12b",
+        "provider": "ollama",
+        "name": "Mistral NeMo 12B (Ollama Local)",
+        "family": "Mistral",
+    },
+    {
+        "model": "ollama/qwen2.5:14b",
+        "provider": "ollama",
+        "name": "Qwen 2.5 14B (Ollama Local)",
+        "family": "Qwen",
+    },
+    {
+        "model": "ollama/codellama:7b",
+        "provider": "ollama",
+        "name": "CodeLlama 7B (Ollama Local)",
+        "family": "Meta",
+    },
+    {
+        "model": "ollama/llama3.2:3b",
+        "provider": "ollama",
+        "name": "Llama 3.2 3B (Ollama Local)",
+        "family": "Meta",
+    },
 ]
 
 
@@ -1038,10 +1127,15 @@ def run_trial(
         api_keys["googleKeys"] = gemini_keys
 
     openrouter_keys = get_openrouter_keys(config)
-    openrouter_key_index = 0
-    if openrouter_keys:
-        api_keys["openrouter"] = openrouter_keys[openrouter_key_index]
+    active_or_key = get_next_openrouter_key(config)
+    if active_or_key:
+        api_keys["openrouter"] = active_or_key
         api_keys["openrouterKeys"] = openrouter_keys
+        update_runtime_headers(active_or_key, target_url=base_url)
+    elif openrouter_keys:
+        api_keys["openrouter"] = openrouter_keys[0]
+        api_keys["openrouterKeys"] = openrouter_keys
+        update_runtime_headers(openrouter_keys[0], target_url=base_url)
 
     hf_tokens = get_huggingface_tokens(config)
     hf_token_index = 0
@@ -1063,13 +1157,16 @@ def run_trial(
         api_keys["ollamaBaseUrl"] = ollama_base
         api_keys["ollamaUrl"] = ollama_base
 
-    # Multi-node Colab cluster endpoints for Agent Alpha and Agent Beta
+    # Multi-node Colab cluster endpoints for Agent Alpha, Agent Beta, and Node 3
     url_a = getattr(config, "ollama_url_a", None) or os.environ.get("COLAB_URL_1") or os.environ.get("OLLAMA_BASE_URL_1")
     url_b = getattr(config, "ollama_url_b", None) or os.environ.get("COLAB_URL_2") or os.environ.get("OLLAMA_BASE_URL_2")
+    url_3 = getattr(config, "ollama_url_3", None) or os.environ.get("COLAB_URL_3") or os.environ.get("OLLAMA_BASE_URL_3")
     if url_a:
         api_keys["ollamaUrlA"] = url_a
     if url_b:
         api_keys["ollamaUrlB"] = url_b
+    if url_3:
+        api_keys["ollamaUrl3"] = url_3
 
     ollama_model_urls = {}
     for env_k, env_v in os.environ.items():
@@ -1078,6 +1175,30 @@ def run_trial(
             # Also register without prefix for direct model matching
             clean_m = env_k.replace("OLLAMA_URL_", "").lower()
             ollama_model_urls[clean_m] = env_v.strip()
+
+    # Link models from untitled2.ipynb (Node 2)
+    if url_b:
+        ollama_model_urls.setdefault("deepseek-r1:14b", url_b)
+        ollama_model_urls.setdefault("deepseek_r1_14b", url_b)
+
+    # Link models from untitled3.ipynb (Node 3)
+    if url_3:
+        ollama_model_urls.setdefault("mistral-nemo:12b", url_3)
+        ollama_model_urls.setdefault("mistral_nemo_12b", url_3)
+        ollama_model_urls.setdefault("qwen2.5:14b", url_3)
+        ollama_model_urls.setdefault("qwen2_5_14b", url_3)
+        ollama_model_urls.setdefault("codellama:7b", url_3)
+        ollama_model_urls.setdefault("codellama_7b", url_3)
+        ollama_model_urls.setdefault("llama3.2:3b", url_3)
+        ollama_model_urls.setdefault("llama3_2_3b", url_3)
+
+    # Link models from untitled1.ipynb (Node 1)
+    if ollama_base or url_a:
+        primary_node = url_a or ollama_base
+        for n1_mod in ("llama3.1:8b", "deepseek-r1:8b", "qwen2.5-coder:7b", "gemma2:9b", "smollm2:1.7b", "phi4:14b"):
+            ollama_model_urls.setdefault(n1_mod, primary_node)
+            ollama_model_urls.setdefault(n1_mod.replace(":", "_").replace(".", "_"), primary_node)
+
     cli_model_urls = getattr(config, "ollama_model_urls", None) or []
     for item in cli_model_urls:
         if "=" in item:
@@ -1166,11 +1287,11 @@ def run_trial(
                     failing_or_key = api_keys.get("openrouter")
                     if failing_or_key:
                         EXHAUSTED_OPENROUTER_KEYS.add(failing_or_key)
-                    valid_or_keys = get_openrouter_keys(config, include_exhausted=False)
-                    if valid_or_keys:
-                        next_or_key = random.choice(valid_or_keys)
+                    next_or_key = get_next_openrouter_key(config)
+                    if next_or_key:
                         api_keys["openrouter"] = next_or_key
                         turn_payload["apiKeys"] = api_keys
+                        update_runtime_headers(next_or_key, target_url=base_url)
                         print(
                             f"{YELLOW}[!] OpenRouter key error. Blacklisted key. Selected next valid key ({next_or_key[:12]}...). Retrying turn...{RESET}"
                         )
@@ -1571,6 +1692,7 @@ def main():
     parser.add_argument("--ollama-url", "--colab-url", dest="ollama_url", default=None, help="Base URL of Ollama or Google Colab Cloudflare tunnel (e.g. https://xxx.trycloudflare.com/v1)")
     parser.add_argument("--ollama-url-a", "--colab-url-a", dest="ollama_url_a", default=None, help="Dedicated Colab tunnel URL for Agent Alpha (Colab GPU Node 1)")
     parser.add_argument("--ollama-url-b", "--colab-url-b", dest="ollama_url_b", default=None, help="Dedicated Colab tunnel URL for Agent Beta (Colab GPU Node 2)")
+    parser.add_argument("--ollama-url-3", "--colab-url-3", dest="ollama_url_3", default=None, help="Dedicated Colab tunnel URL for Node 3 Multi-Model Suite")
     parser.add_argument("--ollama-model-url", dest="ollama_model_urls", action="append", default=None, help="Model-specific Colab endpoint mapping (e.g. --ollama-model-url llama3.1:8b=https://xxx.trycloudflare.com/v1)")
     parser.add_argument("--openai-key", default=None, help="OpenAI API Key (default: OPENAI_API_KEY from environment or .env)")
     parser.add_argument("--anthropic-key", default=None, help="Anthropic API Key (default: ANTHROPIC_API_KEY from environment or .env)")
@@ -1595,7 +1717,9 @@ def main():
     parser.add_argument("--turn-timeout", type=int, default=240, help="Per-turn inference timeout in seconds (default: 120)")
     parser.add_argument("--uncapped", action="store_true", help="Run in uncapped mode until natural consensus or loop cap")
     parser.add_argument("--count", type=int, default=0, help="Number of benchmark trials to run (0 for infinite loop)")
-    parser.add_argument("--delay", type=float, default=2.0, help="Cooling delay in seconds between trials (default: 2.0)")
+    parser.add_argument("--single-run", action="store_true", help="Execute a single trial and exit cleanly (useful for bash one-shots)")
+    parser.add_argument("--loop", "--continuous", dest="continuous", action="store_true", default=True, help="Run continuously in a resilient loop (default: True)")
+    parser.add_argument("--delay", type=float, default=3.0, help="Cooling delay in seconds between trials (default: 3.0)")
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -1618,6 +1742,9 @@ def main():
     parser.add_argument("--restart-delay", type=int, default=8, help="Seconds to wait before auto-restarting on fatal crash (default: 8)")
 
     args = parser.parse_args()
+
+    if args.single_run:
+        args.count = 1
 
     if args.pause_minutes is not None:
         args.batch_pause = max(5, int(args.pause_minutes * 60))
@@ -1700,6 +1827,16 @@ def main():
                         break
                     trial_counter += 1
 
+                    # Dynamically reload .env.local without restarting script
+                    load_env_candidates(force_reload=True)
+                    update_runtime_headers(target_url=args.url)
+
+                    # Execution banner matching user requested format
+                    now_str = datetime.now().strftime("%a %b %d %H:%M:%S %Z %Y")
+                    print(f"\n{BOLD}{CYAN}========================================================{RESET}")
+                    print(f"{BOLD}{GREEN}Starting DualBlind Arena Run at {now_str}{RESET}")
+                    print(f"{BOLD}{CYAN}========================================================{RESET}\n")
+
                     trial_succeeded = False
                     cooldown_performed = False
 
@@ -1746,11 +1883,16 @@ def main():
                             if "GEMINI_API_KEY" in err_str:
                                 print(f"{YELLOW}    [→] Missing API Key: Pass --api-key YOUR_KEY or set export GEMINI_API_KEY=YOUR_KEY{RESET}")
                             print(f"{DIM}    Continuing to next problem in {args.delay}s...{RESET}")
-                            time.sleep(args.delay)
 
+                    # Run Finished delimiter matching user requested format
+                    print(f"\n{BOLD}{CYAN}========================================================{RESET}")
                     if args.count > 0 and trial_counter >= args.count:
-                        print(f"\n{BOLD}{GREEN}✓ Target trial count of {args.count} completed successfully.{RESET}")
+                        print(f"{BOLD}{GREEN}Run finished. Completed target of {args.count} run(s).{RESET}")
+                        print(f"{BOLD}{CYAN}========================================================{RESET}\n")
                         return
+                    else:
+                        print(f"{BOLD}{GREEN}Run finished. Restarting process in {int(args.delay)} seconds...{RESET}")
+                        print(f"{BOLD}{CYAN}========================================================{RESET}\n")
 
                     # Batch Cooldown: Pause for a couple of minutes after every 5 runs and restart
                     if RUNNING and args.batch_size > 0 and (trial_counter % args.batch_size == 0) and not cooldown_performed:
@@ -1761,7 +1903,7 @@ def main():
                             args.batch_pause,
                             reason=f"Completed batch of {args.batch_size} trials (Total runs: {trial_counter}). Cooling down for {dur_str} before starting next batch.",
                         )
-                    elif RUNNING and args.delay > 0 and trial_succeeded:
+                    elif RUNNING and args.delay > 0:
                         time.sleep(args.delay)
 
         except KeyboardInterrupt:
